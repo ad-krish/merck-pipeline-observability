@@ -2,43 +2,37 @@
 
 Static dashboard built from Acceldata ADM snapshot data (26 Aug 2026, 04:30 UTC). It does **not** query ADM while you use it.
 
-## Public links
+## Public URL
 
-After GitHub Pages is on:
+The dashboard is the **site root** (no extra file name in the address bar):
 
-- Dashboard: https://ad-krish.github.io/merck-pipeline-observability/pipeline-observability.html
+- GitHub Pages: https://ad-krish.github.io/merck-pipeline-observability/
 - Data lineage: https://ad-krish.github.io/merck-pipeline-observability/data-lineage.html
 
-The repo root URL redirects to the dashboard.
+Repo: https://github.com/ad-krish/merck-pipeline-observability
 
 ## How GitHub is used
 
-GitHub stores this folder as a **public repository** (a shared copy of the files). Anyone with the link can view the files. **GitHub Pages** then serves those HTML files as a website.
-
-| Step | What it does |
-|---|---|
-| `git add` / `git commit` | Save a snapshot of your local files |
-| `git push` | Upload that snapshot to GitHub |
-| GitHub Pages | Turns the HTML on the `main` branch into a public URL |
+GitHub stores this folder as a **public repository**. **GitHub Pages** serves `index.html` at the root URL.
 
 ## Update the live site
 
-1. Edit `pipeline-observability.html` (or the lineage docs) locally.
-2. From this folder:
+Edit **`index.html`** (that is the dashboard). Then:
 
 ```bash
+cd /Users/krish/Downloads/Customers/Merck/Pipeline_Dashboard
 git add -A
 git commit -m "Describe what changed"
 git push
 ```
 
-3. Wait about a minute, then hard-refresh the Pages URL.
+Wait about a minute, then hard-refresh the Pages URL.
 
 ## Local files
 
 | File | Role |
 |---|---|
-| `pipeline-observability.html` | Dashboard |
+| `index.html` | Dashboard (this is what the public URL loads) |
 | `data-lineage.html` | Lineage (where numbers come from) |
 | `DATA-LINEAGE.md` | Same lineage in Markdown |
 | `ACR-2934.txt` / `ACR-2935.txt` | Merck requirements |
