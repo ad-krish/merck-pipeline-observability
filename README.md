@@ -4,10 +4,13 @@ Static dashboard built from Acceldata ADM snapshot data (26 Aug 2026, 04:30 UTC)
 
 ## Public URL
 
-The dashboard is the **site root** (no extra file name in the address bar):
+Share this with Merck (root path, same style as the Mantis demo):
 
-- GitHub Pages: https://ad-krish.github.io/merck-pipeline-observability/
-- Data lineage: https://ad-krish.github.io/merck-pipeline-observability/data-lineage.html
+**https://merck-pipeline-observability.vercel.app/**
+
+Data lineage: https://merck-pipeline-observability.vercel.app/data-lineage.html
+
+GitHub Pages (backup): https://ad-krish.github.io/merck-pipeline-observability/
 
 Repo: https://github.com/ad-krish/merck-pipeline-observability
 
