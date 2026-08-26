@@ -1,0 +1,51 @@
+Description
+
+Required a dedicated widget that identifies and monitors long-running pipeline executions. The widget should automatically detect jobs that exceed their expected execution duration, classify them as "Long Running" based on configurable thresholds, highlight recurring execution overruns, and identify stalled executions that are no longer making progress. This provides users with real-time visibility into pipeline performance anomalies and operational bottlenecks.
+
+Persona & Use Cases
+
+
+Organizations execute thousands of pipeline runs daily with varying execution durations. Today, there is no visibility into pipelines that consistently exceed expected execution times or become stalled during execution.
+
+A dedicated widget would enable users to:
+
+Detect pipelines that exceed predefined execution duration thresholds.
+
+Classify pipelines as Long Running using configurable or learned baseline execution times.
+
+Identify recurring execution overruns across multiple runs.
+
+Surface stalled executions where no progress has been observed for a configurable period.
+
+Prioritize investigation of pipelines that may impact downstream data availability and SLAs.
+
+Acceptance Criteria
+
+
+A new Long-Running Pipelines widget is available on the Pipeline Dashboard.
+
+The widget identifies pipeline runs exceeding configurable execution time thresholds.
+
+Pipelines are automatically classified as Long Running when thresholds are breached.
+
+The widget highlights pipelines with recurring execution overruns across multiple runs.
+
+Stalled executions (no observable progress for a configurable duration) are detected and surfaced.
+
+Users can drill down from the widget to the affected pipeline execution details.
+
+Filters are available by time range, pipeline, environment, severity, and execution status, Namespace, Tags.
+
+The widget displays key metrics such as:
+
+Total long-running executions
+
+Currently stalled executions
+
+Average execution duration vs. expected duration
+
+Top recurring long-running pipelines
+
+Thresholds for long-running and stalled execution detection are configurable at the global or pipeline level.
+
+Alerts can be generated for pipelines classified as long-running or stalled (if alerting is enabled).

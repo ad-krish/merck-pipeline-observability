@@ -1,0 +1,73 @@
+Description
+
+Required a Pipeline Dashboard with time-based execution analytics that aggregates pipeline run data over configurable time windows. The dashboard should provide both summary metrics and trend visualizations to help users understand pipeline reliability, execution performance, and operational health over time.
+
+Users should be able to quickly switch between predefined time ranges (e.g., Last 10 Runs, Last 24 Hours, Last 3 Days, Last 7 Days) and view aggregated metrics such as average execution duration, success rate, failure count, and execution outliers.
+
+Persona & Use Cases
+
+
+Operations and support teams need more than the current execution status, they require historical insights to identify performance degradation, recurring failures, and execution trends.
+
+Today, users must manually inspect individual pipeline runs to answer questions such as:
+
+Is this pipeline becoming slower over time?
+
+Has the failure rate increased this week?
+
+How reliable has this pipeline been over the last few days?
+
+Are there any execution duration outliers that indicate infrastructure or application issues?
+
+A time-based analytics dashboard would provide these insights at a glance, enabling proactive monitoring and faster root cause analysis.
+
+Acceptance Criteria
+
+
+The Pipeline Dashboard supports configurable aggregation windows, including:
+
+Last 10 Runs
+
+Last 24 Hours
+
+Last 3 Days
+
+Last 7 Days
+
+Custom Date Range (optional)
+
+Dashboard displays summary metrics for the selected time period, including:
+
+Total Pipeline Runs
+
+Successful Runs
+
+Failed Runs
+
+Success Rate (%)
+
+Failure Rate (%)
+
+Average Execution Duration
+
+Minimum and Maximum Execution Duration
+
+Longest Running Pipeline
+
+Trend visualizations are available for:
+
+Execution duration over time
+
+Success and failure trends
+
+Pipeline throughput (runs over time)
+
+Average execution time trends
+
+Execution outliers are automatically detected and highlighted based on configurable thresholds or statistical deviation from historical baselines.
+
+Users can drill down from aggregated metrics to the individual pipeline runs contributing to the summary.
+
+Dashboard filters support Region, Product, Business Domain, Environment, Pipeline, and Time Range.
+
+Dashboard automatically refreshes aggregated metrics as new pipeline executions are completed.

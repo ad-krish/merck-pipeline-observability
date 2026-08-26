@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Data lineage · Pipeline Observability · Merck</title>
+  <style>
+    :root {
+      --ink: #1c2128;
+      --muted: #5f6b76;
+      --line: #e2e6ea;
+      --bg: #eef1f4;
+      --card: #ffffff;
+      --header: #1c2128;
+      --teal: #1e7164;
+      --teal-deep: #164e48;
+      --red: #b3261e;
+      --gold: #8a6d1b;
+      --code: #f6f7f8;
+      --shadow: 0 1px 2px rgba(16,24,40,.06), 0 4px 12px rgba(16,24,40,.04);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.55 "IBM Plex Sans", "Segoe UI", sans-serif; }
+    a { color: var(--teal-deep); }
+    .topbar {
+      background: var(--header); color: #fff; display: flex; align-items: center;
+      justify-content: space-between; padding: 14px 22px; gap: 16px; position: sticky; top: 0; z-index: 5;
+    }
+    .brand { font-size: 13px; letter-spacing: .08em; font-weight: 650; }
+    .brand span { color: #9fb7b2; font-weight: 500; }
+    .topbar a { color: #fff; text-decoration: none; border: 1px solid #3d4652; border-radius: 8px; padding: 7px 12px; }
+    .layout { display: grid; grid-template-columns: 240px 1fr; max-width: 1180px; margin: 0 auto; gap: 0; }
+    nav {
+      position: sticky; top: 56px; align-self: start; padding: 22px 16px 40px 22px;
+      font-size: 13px; max-height: calc(100vh - 56px); overflow: auto;
+    }
+    nav a { display: block; color: var(--muted); text-decoration: none; padding: 5px 0; }
+    nav a:hover { color: var(--teal-deep); }
+    nav .sub { padding-left: 12px; font-size: 12px; }
+    main { padding: 24px 22px 64px 8px; }
+    article { background: var(--card); border-radius: 12px; box-shadow: var(--shadow); padding: 28px 32px 36px; }
+    h1 { margin: 0 0 8px; font-size: 26px; font-weight: 650; }
+    h2 { margin: 36px 0 12px; font-size: 18px; padding-top: 8px; border-top: 1px solid var(--line); }
+    h2:first-of-type { border-top: 0; margin-top: 28px; }
+    h3 { margin: 22px 0 8px; font-size: 15px; color: var(--teal-deep); }
+    p, li { color: #2a313a; }
+    .lede { color: var(--muted); margin: 0 0 18px; }
+    .callout {
+      background: #fff8e8; border: 1px solid #ead7a8; border-radius: 10px; padding: 12px 14px; margin: 14px 0;
+    }
+    .callout.warn { background: #f8ecea; border-color: #e8c4c0; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0 18px; font-size: 13px; }
+    th, td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); background: #f8faf9; }
+    code, kbd { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; font-size: 12px; background: var(--code); padding: 1px 5px; border-radius: 4px; }
+    pre {
+      background: #1c2128; color: #e8edf0; border-radius: 10px; padding: 14px 16px; overflow: auto;
+      font: 12px/1.45 "IBM Plex Mono", ui-monospace, Menlo, monospace; margin: 10px 0 18px;
+    }
+    pre .c { color: #8aa0a8; }
+    ol, ul { padding-left: 20px; }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 8px; }
+    .tag { background: #e7f0ee; color: var(--teal-deep); border-radius: 999px; padding: 4px 10px; font-size: 12px; }
+    @media (max-width: 860px) {
+      .layout { grid-template-columns: 1fr; }
+      nav { display: none; }
+      main { padding: 16px; }
+      article { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">PIPELINE OBSERVABILITY <span>/ DATA LINEAGE</span></div>
+    <a href="pipeline-observability.html">Open dashboard</a>
+  </header>
+  <div class="layout">
+    <nav>
+      <a href="#outliers">1. Outliers</a>
+      <a href="#source">2. Where data comes from</a>
+      <a href="#source" class="sub">Runtime</a>
+      <a href="#views" class="sub">Views</a>
+      <a href="#raw" class="sub">RAW mapping</a>
+      <a href="#charts">3. Chart-by-chart</a>
+      <a href="#c31" class="sub">Pipelines in scope</a>
+      <a href="#c32" class="sub">Pipeline runs</a>
+      <a href="#c33" class="sub">Long running</a>
+      <a href="#c34" class="sub">SLA / alerts</a>
+      <a href="#c35" class="sub">Run status trend</a>
+      <a href="#c35b" class="sub">Alert trend</a>
+      <a href="#c36" class="sub">Operational table</a>
+      <a href="#c37" class="sub">Run sheet</a>
+      <a href="#c39" class="sub">Long-running view</a>
+      <a href="#c310" class="sub">Filters</a>
+      <a href="#c311" class="sub">Policies &amp; alerts</a>
+      <a href="#sql">4. SQL run against ADM</a>
+      <a href="#client">5. Browser-only metrics</a>
+      <a href="#gaps">6. Gaps vs ACR / PDF</a>
+    </nav>
+    <main>
+      <article>
+        <h1>Pipeline Observability — data lineage</h1>
+        <p class="lede">What <b>Outliers</b> means, and for each chart where the numbers come from (system, view, columns, and SQL).</p>
+        <div class="meta">
+          <span class="tag">Acceldata ADM</span>
+          <span class="tag">Snapshot 26 Aug 2026 04:30 UTC</span>
+          <span class="tag">pipelines_agent</span>
+        </div>
+
+        <h2 id="outliers">1. What “Outliers” means</h2>
+        <p><b>Outliers</b> are pipeline runs whose <b>duration is unusually high versus that pipeline’s own baseline</b>. They are not the same as <b>long-running</b> runs.</p>
+        <table>
+          <thead><tr><th>Flag</th><th>Meaning</th><th>Rule used in this dashboard</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><b>Long-running</b></td>
+              <td>The run took longer than a <b>user threshold</b> (default 10 minutes; also 5 / 15 / 20 / custom).</td>
+              <td><code>run_duration_minutes &gt;= threshold</code></td>
+            </tr>
+            <tr>
+              <td><b>Outlier</b></td>
+              <td>The run is <b>slow relative to that pipeline’s recent average</b>, even if it is under the long-running threshold — or much slower than usual even when it is already long.</td>
+              <td>See formula below</td>
+            </tr>
+            <tr>
+              <td><b>SLA / STATUS breach</b></td>
+              <td>ADM recorded at least one alert on the run (typically a failed run).</td>
+              <td><code>run_alerts_count &gt; 0</code></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Outlier formula (client-side)</h3>
+        <p>From ACR-2935: outliers should be detected from a <b>configurable threshold or statistical deviation from historical baselines</b>.</p>
+        <p>This dashboard uses a <b>baseline + guardrail</b> rule:</p>
+        <pre>expected  = 7-day average duration for that pipeline (minutes)
+outlier   = duration &gt; expected + max(2 minutes, 20% of expected)</pre>
+        <p>Worked example:</p>
+        <ul>
+          <li><code>eli_lilly_glue_pipeline_python</code> 7-day average = <b>19.37 min</b></li>
+          <li>Guardrail = <code>max(2, 0.2 × 19.37)</code> = <b>3.87 min</b></li>
+          <li>Outlier if duration <b>&gt; 23.24 min</b></li>
+          <li>The 21 Aug run at <b>23.77 min</b> is an outlier (and also long-running, because 23.77 ≥ 10).</li>
+        </ul>
+        <p>A 12-minute <code>dag2_load_transform</code> run (baseline 11.4 min) is <b>long-running</b> but <b>not</b> an outlier, because 12 is not more than <code>11.4 + max(2, 2.28) = 13.4</code>.</p>
+        <p>The <b>Outliers</b> checkbox in the filter bar keeps only runs that pass this rule. Those runs also raise a <b>Duration outlier</b> alert (TIME / HIGH) in the run sheet.</p>
+        <p><code>EXPECTED</code> in <code>pipeline-observability.html</code> is the baked-in 7-day average per pipeline. It was computed from ADM executions (query in §4). It is <b>not</b> a live ADM column.</p>
+
+        <h2 id="source">2. Where the dashboard gets data</h2>
+        <h3>Runtime</h3>
+        <div class="callout warn">
+          <b>pipeline-observability.html does not query ADM while you use it.</b>
+          Charts are computed in the browser from a snapshot embedded as <code>RAW</code> + <code>EXPECTED</code> + <code>PIPE_META</code> + <code>FAIL_ALERT</code> + <code>POLICIES</code> + <code>POLICY_EVALS</code> + <code>INCIDENTS</code>.
+        </div>
+        <table>
+          <thead><tr><th>Item</th><th>Value</th></tr></thead>
+          <tbody>
+            <tr><td>Source product</td><td>Acceldata ADM (pipeline observability catalog)</td></tr>
+            <tr><td>Access path</td><td>MCP tool <code>user-ADM</code> → <code>pipelines_agent</code> (SQL against named views)</td></tr>
+            <tr><td>Snapshot time</td><td><b>26 Aug 2026, 04:30 UTC</b></td></tr>
+            <tr>
+              <td>Database / schema</td>
+              <td>ADM does not expose a physical <code>database.schema.table</code> name through this agent. Queries run against <b>catalog views</b> (<code>vw_*</code>). Treat those view names as the table layer.</td>
+            </tr>
+            <tr><td>Query engine</td><td>PostgreSQL-compatible SQL (<code>COUNT(*) FILTER (...)</code>, <code>INTERVAL</code>, <code>::numeric</code>)</td></tr>
+          </tbody>
+        </table>
+        <p>To refresh the HTML later, re-run the queries in §4 and replace <code>RAW</code> / <code>EXPECTED</code> / <code>PIPE_META</code> / <code>FAIL_ALERT</code> / <code>POLICIES</code> / <code>POLICY_EVALS</code> / <code>INCIDENTS</code>.</p>
+
+        <h3 id="views">Views used</h3>
+        <table>
+          <thead><tr><th>View</th><th>Grain</th><th>Role on this dashboard</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code>vw_pipeline_executions_v2</code></td>
+              <td>One row per pipeline <b>run</b></td>
+              <td>Primary fact for every chart: runs, duration, status, owner, source, alerts, spans</td>
+            </tr>
+            <tr>
+              <td><code>vw_pipeline_summary_v2</code></td>
+              <td>One row per <b>pipeline</b></td>
+              <td>Estate size (166 pipelines), source types, owner/team/tags, failure-alert settings. Most pipelines had <b>no run in the 7-day window</b>, so glance cards show 11 pipelines in scope, not 166.</td>
+            </tr>
+            <tr>
+              <td><code>vw_pipeline_incidents_v2</code></td>
+              <td>Incident occurrence</td>
+              <td>Banner plus <b>Policies &amp; alerts</b> tab: STATUS failures on <code>simple_failure_pipeline</code> / <code>eli_lilly_glue_pipeline</code>; TIME / CRITICAL missed start on <code>snowflake_copy_and_trigger_transform</code></td>
+            </tr>
+            <tr>
+              <td><code>vw_pipeline_monitoring_policies_v2</code></td>
+              <td>One row per policy</td>
+              <td><b>Policies &amp; alerts</b> tab: start / end / duration monitors. 18 enabled policies on 15 estate pipelines; <b>none</b> of the 11 pipelines with runs in this window have a TIME policy.</td>
+            </tr>
+            <tr>
+              <td><code>vw_pipeline_monitoring_policy_executions_v2</code></td>
+              <td>One row per evaluation</td>
+              <td><b>Policies &amp; alerts</b> tab: last eval for the snowflake start-time policy (24 Aug, in progress). <code>evaluation_status</code> is eval health; <code>alert_raised</code> is the breach.</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>Not used for charts (available in ADM, not in this HTML): <code>vw_pipeline_automations_v2</code>, <code>vw_pipeline_run_graph</code>.</p>
+
+        <h3 id="raw">How <code>RAW</code> maps to ADM columns</h3>
+        <p>Each <code>RAW</code> tuple is one execution:</p>
+        <pre>[run_id, pipeline_name, pipeline_source_type, pipeline_owner, run_result,
+ run_started_at, run_duration_minutes, run_alerts_count, run_alert_types,
+ total_spans, span_success_percentage]</pre>
+        <table>
+          <thead><tr><th>Tuple index</th><th>ADM column (<code>vw_pipeline_executions_v2</code>)</th></tr></thead>
+          <tbody>
+            <tr><td>0</td><td><code>run_id</code></td></tr>
+            <tr><td>1</td><td><code>pipeline_name</code></td></tr>
+            <tr><td>2</td><td><code>pipeline_source_type</code></td></tr>
+            <tr><td>3</td><td><code>pipeline_owner</code></td></tr>
+            <tr><td>4</td><td><code>run_result</code> (<code>SUCCESS</code> / <code>FAILURE</code>)</td></tr>
+            <tr><td>5</td><td><code>run_started_at</code> (stored UTC; displayed in the selected timezone)</td></tr>
+            <tr><td>6</td><td><code>run_duration_minutes</code></td></tr>
+            <tr><td>7</td><td><code>run_alerts_count</code></td></tr>
+            <tr><td>8</td><td><code>run_alert_types</code> (e.g. <code>STATUS</code>)</td></tr>
+            <tr><td>9</td><td><code>total_spans</code></td></tr>
+            <tr><td>10</td><td><code>span_success_percentage</code></td></tr>
+          </tbody>
+        </table>
+        <p>Identity fields that are <b>not</b> in the <code>RAW</code> tuple are joined in the browser from <code>PIPE_META</code> (baked from <code>vw_pipeline_summary_v2</code>):</p>
+        <table>
+          <thead><tr><th>Field</th><th>Source</th></tr></thead>
+          <tbody>
+            <tr><td><code>pipeline_uid</code></td><td><code>vw_pipeline_summary_v2.pipeline_uid</code></td></tr>
+            <tr><td>Namespace</td><td>Prefix of <code>pipeline_uid</code> (everything before the last <code>.</code>)</td></tr>
+            <tr><td>Tags</td><td><code>pipeline_tags</code> (empty on the 11 pipelines that ran in this window)</td></tr>
+          </tbody>
+        </table>
+        <p>Baked blobs used only on the <b>Policies &amp; alerts</b> tab:</p>
+        <table>
+          <thead><tr><th>Constant</th><th>Source</th></tr></thead>
+          <tbody>
+            <tr><td><code>FAIL_ALERT</code></td><td><code>failure_alert_enabled</code>, <code>failure_alert_severity</code>, <code>failure_alert_name</code> on <code>vw_pipeline_summary_v2</code> (all 12 pipelines in that tab have alerting on)</td></tr>
+            <tr><td><code>POLICIES</code></td><td><code>vw_pipeline_monitoring_policies_v2</code> — the 4 TIME policies on <code>snowflake_copy_and_trigger_transform</code> (1 start, 2 end, 1 duration)</td></tr>
+            <tr><td><code>POLICY_EVALS</code></td><td><code>vw_pipeline_monitoring_policy_executions_v2</code> — 1 eval in the 7-day window (start-time policy 5512, 24 Aug, <code>IN_PROGRESS</code>)</td></tr>
+            <tr><td><code>INCIDENTS</code></td><td><code>vw_pipeline_incidents_v2</code> — 9 occurrences in the window (7 STATUS on <code>simple_failure_pipeline</code>, 1 STATUS on <code>eli_lilly_glue_pipeline</code>, 1 TIME CRITICAL on snowflake)</td></tr>
+          </tbody>
+        </table>
+
+        <h2 id="charts">3. Chart-by-chart lineage</h2>
+        <p>All charts below start from the same in-memory set: <code>RAW</code> filtered by the selected time window, then by <b>multi-select</b> source / status / severity / owner / pipeline / namespace / tags, then search / flags. Checked values are <b>OR</b> within a filter (any selected source, any selected pipeline). Empty selection means All. <b>Severity</b> is a <b>derived</b> run attribute (highest alert on that run, or “No alerts”), not an ADM column.</p>
+        <p>Each mix card can be viewed as <b>pie</b>, <b>bar</b>, or <b>heatmap</b>. Trend charts can be <b>stacked bar</b>, <b>line</b>, or <b>heatmap</b>.</p>
+        <p>Tabs: <b>Overview</b> | <b>Long-running</b> | <b>Policies &amp; alerts</b>. The third tab is the pipeline → policy → alert drill-down in §3.11. Sidebar filters apply to all three.</p>
+
+        <h3>Shared time-window filter (all charts)</h3>
+        <table>
+          <thead><tr><th>Control</th><th>Logic</th></tr></thead>
+          <tbody>
+            <tr><td>Last 10 runs</td><td>First 10 rows of <code>RAW</code> (already newest-first)</td></tr>
+            <tr><td>Last 24 hours / 3 days / 7 days</td><td><code>run_started_at &gt;= snapshot_time - interval</code> (applied immediately)</td></tr>
+            <tr>
+              <td>Custom time range</td>
+              <td>From date+time → To date+time in the <b>selected timezone</b>, inclusive to the To minute, applied on <b>Apply</b>. Dates are not capped; this snapshot only has runs <b>19 Aug 2026 06:00 UTC – 26 Aug 2026 00:09 UTC</b>, so earlier From/To return 0 runs.</td>
+            </tr>
+            <tr><td>Custom last N runs</td><td>First N rows of <code>RAW</code>, applied on <b>Apply</b></td></tr>
+            <tr>
+              <td>Timezone</td>
+              <td>Header search over IANA zones (<code>Intl.supportedValuesOf('timeZone')</code>). Converts table stamps, trend buckets, and custom From/To. Does not change the stored UTC <code>run_started_at</code>.</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>Equivalent ADM window for the default Last 7 days:</p>
+        <pre>WHERE run_started_at &gt;= NOW() - INTERVAL '7 days'</pre>
+        <p>At snapshot time that window is <b>19 Aug 04:30 UTC → 26 Aug 04:30 UTC</b> and contains <b>67 runs</b>.</p>
+
+        <h3 id="c31">3.1 Pipelines in scope (mix card)</h3>
+        <table>
+          <tbody>
+            <tr><th>What it shows</th><td>Distinct pipelines that have ≥1 run in the current filter; split by source, namespace, or owner</td></tr>
+            <tr><th>ADM view</th><td><code>vw_pipeline_executions_v2</code> plus <code>pipeline_uid</code> from <code>vw_pipeline_summary_v2</code></td></tr>
+            <tr><th>Columns</th><td><code>pipeline_name</code>, <code>pipeline_source_type</code>, <code>pipeline_owner</code>, namespace from <code>pipeline_uid</code></td></tr>
+            <tr><th>KPI</th><td><code>COUNT(DISTINCT pipeline_name)</code> among filtered runs (11 in Last 7 days, unfiltered)</td></tr>
+            <tr><th>Chart</th><td>Count of <b>runs</b> (not pipelines) by the selected split. View as pie / bar / heatmap.</td></tr>
+          </tbody>
+        </table>
+        <pre>SELECT pipeline_source_type,
+       COUNT(DISTINCT pipeline_name) AS pipelines,
+       COUNT(*) AS runs
+FROM vw_pipeline_executions_v2
+WHERE run_started_at &gt;= NOW() - INTERVAL '7 days'
+GROUP BY pipeline_source_type
+ORDER BY runs DESC;</pre>
+        <p><b>Not</b> from <code>vw_pipeline_summary_v2</code> (that view has 166 pipelines, including ones with no recent runs).</p>
+
+        <h3 id="c32">3.2 Pipeline runs (mix card)</h3>
+        <table>
+          <tbody>
+            <tr><th>What it shows</th><td>Run count, success rate, split by status / source / namespace. View as pie / bar / heatmap.</td></tr>
+            <tr><th>ADM view</th><td><code>vw_pipeline_executions_v2</code></td></tr>
+            <tr><th>Columns</th><td><code>run_result</code>, <code>pipeline_source_type</code>, <code>pipeline_owner</code></td></tr>
+            <tr><th>KPI</th><td><code>COUNT(*)</code></td></tr>
+            <tr><th>Success %</th><td><code>COUNT(*) FILTER (WHERE run_result = 'SUCCESS') / COUNT(*)</code></td></tr>
+          </tbody>
+        </table>
+        <pre>SELECT run_result, COUNT(*) AS runs
+FROM vw_pipeline_executions_v2
+WHERE run_started_at &gt;= NOW() - INTERVAL '7 days'
+GROUP BY run_result;</pre>
+        <p>Snapshot result: <b>59 SUCCESS + 8 FAILURE = 67</b>.</p>
+
+        <h3 id="c33">3.3 Long running (mix card)</h3>
+        <table>
+          <tbody>
+            <tr><th>What it shows</th><td>Runs whose duration ≥ the <b>Threshold</b> control (default 10 min)</td></tr>
+            <tr><th>ADM view</th><td><code>vw_pipeline_executions_v2</code></td></tr>
+            <tr><th>Columns</th><td><code>run_duration_minutes</code>, <code>pipeline_name</code>, <code>pipeline_source_type</code></td></tr>
+            <tr><th>KPI</th><td>Count of runs with <code>run_duration_minutes &gt;= threshold</code></td></tr>
+            <tr><th>Recurring</th><td>Pipelines with <b>2+</b> such overruns in the window (client-side)</td></tr>
+          </tbody>
+        </table>
+        <pre>SELECT pipeline_name, COUNT(*) AS long_running_runs
+FROM vw_pipeline_executions_v2
+WHERE run_started_at &gt;= NOW() - INTERVAL '7 days'
+  AND run_duration_minutes &gt;= 10
+GROUP BY pipeline_name
+ORDER BY long_running_runs DESC;</pre>
+        <p>Snapshot: <b>21</b> long-running runs, <b>3</b> recurring pipelines (<code>dag2_load_transform</code>, <code>eli_lilly_glue_pipeline</code>, <code>eli_lilly_glue_pipeline_python</code>).</p>
+        <p>Threshold is <b>not</b> stored in ADM for this widget; it is the dashboard control (5 / 10 / 15 / 20 / custom). ADM <b>does</b> have duration <b>policies</b> (<code>vw_pipeline_monitoring_policies_v2</code>, <code>measurement_type = 'DURATION'</code>) — 14 enabled — which are mentioned in the long-running banner only.</p>
+
+        <h3 id="c34">3.4 SLA / alerts (mix card)</h3>
+        <table>
+          <tbody>
+            <tr><th>What it shows</th><td>Filtered <b>runs</b> classified by <b>highest derived severity</b> (Critical / High / Medium / No alerts)</td></tr>
+            <tr><th>ADM view (raw)</th><td><code>vw_pipeline_executions_v2</code> (<code>run_result</code>, <code>run_alerts_count</code>, <code>run_duration_minutes</code>) plus baseline from the same view</td></tr>
+            <tr><th>ADM view (banner incidents)</th><td><code>vw_pipeline_incidents_v2</code> (<code>incident_severity</code>, <code>incident_category</code>, <code>incident_status</code>)</td></tr>
+            <tr><th>Not a direct ADM column</th><td>Run-level “severity” on the mix card is computed in the browser. View as pie / bar / heatmap.</td></tr>
+          </tbody>
+        </table>
+        <p>Severity ranking (highest wins):</p>
+        <ol>
+          <li><b>Critical</b> — none of the 67 snapshot runs (the CRITICAL missed trigger has <b>no row</b> in the 7-day executions view).</li>
+          <li><b>High</b> — duration overrun well above baseline (<code>duration &gt; expected + 2</code>) and/or <b>outlier</b>.</li>
+          <li><b>Medium</b> — failed run / STATUS alert, or overrun that is only slightly above expected.</li>
+          <li><b>No alerts</b> — everything else.</li>
+        </ol>
+        <pre><span class="c">-- STATUS-type alerts as stored by ADM</span>
+SELECT run_result, run_alerts_count, run_alert_types, COUNT(*) AS runs
+FROM vw_pipeline_executions_v2
+WHERE run_started_at &gt;= NOW() - INTERVAL '7 days'
+GROUP BY run_result, run_alerts_count, run_alert_types;</pre>
+        <p>High / outlier slices are <b>not</b> <code>run_high_alerts</code> from ADM. They are the client formula in §1.</p>
+
+        <h3 id="c35">3.5 Run status trend</h3>
+        <table>
+          <tbody>
+            <tr><th>What it shows</th><td>Runs per day or hour. Metrics: <b>Status</b> (Success vs Failed), <b>Failure rate</b>, or <b>Duration</b> (average minutes). Chart type: stacked bar / line / heatmap.</td></tr>
+            <tr><th>Axes</th><td>X = date or hour in the selected timezone. Left Y = run count (or avg minutes). Right Y = failure rate % when Status/Failure rate is selected.</td></tr>
+            <tr><th>ADM view</th><td><code>vw_pipeline_executions_v2</code></td></tr>
+            <tr><th>Columns</th><td><code>run_started_at</code>, <code>run_result</code>, <code>run_duration_minutes</code></td></tr>
+          </tbody>
+        </table>
+        <pre>SELECT DATE(run_started_at) AS run_day,
+       COUNT(*) FILTER (WHERE run_result = 'SUCCESS') AS successful,
+       COUNT(*) FILTER (WHERE run_result = 'FAILURE') AS failed
+FROM vw_pipeline_executions_v2
+WHERE run_started_at &gt;= NOW() - INTERVAL '7 days'
+GROUP BY DATE(run_started_at)
+ORDER BY run_day;</pre>
+        <p>Hour grain uses <code>run_started_at</code> converted to the selected timezone, then truncated to hour. Clicking a column sets a time-bucket filter (<code>state.day</code>).</p>
+
+        <h3 id="c35b">3.5b Alert trend</h3>
+        <table>
+          <tbody>
+            <tr><th>What it shows</th><td>Alert counts over the same day/hour buckets. <b>By type</b>: failure (STATUS), duration overrun (TIME), duration outlier. <b>By severity</b>: High/critical, Medium, No alerts. Chart type: stacked bar / line / heatmap.</td></tr>
+            <tr><th>Axes</th><td>X = date or hour in the selected timezone. Y = alert (or run) count.</td></tr>
+            <tr><th>ADM view (raw)</th><td><code>vw_pipeline_executions_v2</code></td></tr>
+            <tr><th>Not a direct ADM column</th><td>Type and severity follow the synthetic alerts in §3.7 (same rules as the run sheet).</td></tr>
+          </tbody>
+        </table>
+
+        <h3 id="c36">3.6 Operational run monitoring (table)</h3>
+        <table>
+          <tbody>
+            <tr><th>What it shows</th><td>One row per filtered execution: pipeline, namespace, source/owner, status, derived severity, start (selected timezone), duration vs expected, SLA, flags</td></tr>
+            <tr><th>ADM view</th><td><code>vw_pipeline_executions_v2</code> plus <code>PIPE_META</code></td></tr>
+            <tr><th>Columns</th><td><code>pipeline_name</code>, <code>pipeline_source_type</code>, <code>pipeline_owner</code>, <code>run_result</code>, <code>run_id</code>, <code>run_started_at</code>, <code>run_duration_minutes</code></td></tr>
+            <tr><th>Namespace</th><td>Prefix of <code>pipeline_uid</code></td></tr>
+            <tr><th>Tags</th><td>Shown under namespace (<code>Untagged</code> when <code>pipeline_tags</code> is empty)</td></tr>
+            <tr><th>SLA label</th><td>Breach if <code>run_alerts_count &gt; 0</code>; At risk if outlier or long-running; else Healthy</td></tr>
+            <tr><th>Group by</th><td>None, source, namespace, owner, or pipeline (client-side)</td></tr>
+            <tr><th>“vs expected”</th><td>Client <code>EXPECTED[pipeline_name]</code> (7-day average), not an ADM field</td></tr>
+          </tbody>
+        </table>
+        <pre>SELECT pipeline_name,
+       pipeline_source_type,
+       pipeline_owner,
+       COUNT(*) AS runs,
+       COUNT(*) FILTER (WHERE run_result = 'FAILURE') AS failed
+FROM vw_pipeline_executions_v2
+WHERE run_started_at &gt;= NOW() - INTERVAL '7 days'
+GROUP BY pipeline_name, pipeline_source_type, pipeline_owner
+ORDER BY failed DESC, runs DESC;</pre>
+        <p>Click a pipeline name or <b>Alerts</b> to open the right-hand sheet.</p>
+
+        <h3 id="c37">3.7 Right-hand sheet (alerts)</h3>
+        <table>
+          <tbody>
+            <tr><th>What it shows</th><td>Policies configured on the selected pipeline, plus the alert list (ADM incidents merged with synthetic duration/failure alerts)</td></tr>
+            <tr><th>ADM overlap</th><td>Failed runs with <code>run_alerts_count &gt; 0</code> / <code>run_alert_types</code> containing <code>STATUS</code> match ADM STATUS incidents. TIME incidents with <code>monitoring_policy_id</code> (missed start) appear here when that pipeline is selected — including <code>snowflake_copy_and_trigger_transform</code>, which has <b>no run</b> in the window</td></tr>
+            <tr><th>Client-only</th><td>Duration overrun and Duration outlier rows (TIME) — generated from duration vs threshold / baseline, not from <code>vw_pipeline_incidents_v2</code></td></tr>
+          </tbody>
+        </table>
+        <table>
+          <thead><tr><th>Alert type</th><th>Category</th><th>Severity</th><th>Source</th></tr></thead>
+          <tbody>
+            <tr><td>Run failure</td><td>STATUS</td><td>MEDIUM</td><td><code>run_result = 'FAILURE'</code> or <code>run_alerts_count &gt; 0</code></td></tr>
+            <tr><td>Duration overrun</td><td>TIME</td><td>HIGH or MEDIUM</td><td><code>run_duration_minutes &gt;= threshold</code></td></tr>
+            <tr><td>Duration outlier</td><td>TIME</td><td>HIGH</td><td>outlier formula in §1</td></tr>
+          </tbody>
+        </table>
+        <p>Incidents that <b>do</b> exist in ADM but have <b>no matching 7-day run</b> (missed trigger) also appear on the <b>Policies &amp; alerts</b> tab and in the sheet for that pipeline. The yellow banner still calls them out:</p>
+        <pre>SELECT incident_id, incident_status, incident_severity, incident_category,
+       help_description, incident_created_at, pipeline_id, pipeline_run_id, monitoring_policy_id
+FROM vw_pipeline_incidents_v2
+ORDER BY incident_created_at DESC
+LIMIT 20;</pre>
+        <p>Snapshot: CRITICAL TIME incident on <code>snowflake_copy_and_trigger_transform</code> (no start 17–24 Aug, <code>monitoring_policy_id</code> 5512). That pipeline is <b>not</b> in the 67-run execution set, so Critical on the Overview severity mix is <b>0</b>.</p>
+
+        <h3 id="c39">3.9 Long-running view (second tab)</h3>
+        <p>Same execution view as Overview, restricted to <code>run_duration_minutes &gt;= threshold</code>. The third tab is <b>Policies &amp; alerts</b> (§3.11).</p>
+        <p>Same execution view, restricted to <code>run_duration_minutes &gt;= threshold</code>.</p>
+        <table>
+          <thead><tr><th>Card</th><th>Source</th></tr></thead>
+          <tbody>
+            <tr><td>Long-running executions</td><td>Count of those runs; avg duration vs avg <code>EXPECTED</code></td></tr>
+            <tr><td>Recurring pipelines</td><td>Pipelines with 2+ overruns</td></tr>
+            <tr><td>Failed while long</td><td><code>run_result = 'FAILURE'</code> among long runs</td></tr>
+            <tr><td>Currently stalled</td><td><b>0</b> at snapshot — no <code>run_result = 'RUNNING'</code> / <code>run_status = 'STARTED'</code> with no span progress</td></tr>
+          </tbody>
+        </table>
+        <p>Stalled check used at snapshot time:</p>
+        <pre>SELECT pipeline_name, run_status, run_result, run_started_at,
+       run_duration_minutes, running_spans, finished_spans, total_spans
+FROM vw_pipeline_executions_v2
+WHERE run_result = 'RUNNING' OR run_status = 'STARTED'
+ORDER BY run_started_at DESC;</pre>
+
+        <h3 id="c310">3.10 Filters (what each control reads)</h3>
+        <p>List filters (source, status, severity, owner, pipeline, namespace, tags) are <b>checkbox multi-select</b>. Within a filter, checked values are OR’d. Other list options <b>cascade</b> to values still present after the current filters (except Tags, which also lists estate tags that have no runs in this window).</p>
+        <table>
+          <thead><tr><th>Filter</th><th>ADM column / derivation</th><th>UI</th></tr></thead>
+          <tbody>
+            <tr><td>Timezone</td><td>Display only; converts <code>run_started_at</code></td><td>Searchable IANA list</td></tr>
+            <tr><td>Time range</td><td><code>run_started_at</code></td><td>Presets, custom date+time, custom last N runs</td></tr>
+            <tr><td>Pipeline source</td><td><code>pipeline_source_type</code></td><td>Multi-select checkboxes</td></tr>
+            <tr><td>Run status</td><td><code>run_result</code></td><td>Multi-select checkboxes</td></tr>
+            <tr><td>Severity</td><td>Derived (§3.4), not <code>incident_severity</code></td><td>Multi-select checkboxes</td></tr>
+            <tr><td>Owner</td><td><code>pipeline_owner</code> (blank → <code>unassigned</code>)</td><td>Multi-select checkboxes</td></tr>
+            <tr><td>Pipeline</td><td><code>pipeline_name</code></td><td>Multi-select checkboxes</td></tr>
+            <tr><td>Namespace / Airflow instance</td><td>Prefix of <code>pipeline_uid</code></td><td>Multi-select checkboxes</td></tr>
+            <tr>
+              <td>Tags</td>
+              <td><code>pipeline_tags</code>. <b>Untagged</b> = empty tags on the pipeline. Named estate tags (<code>rzr</code>, <code>acr</code>, <code>demo_inthecall</code>, <code>hsbc</code>, <code>rsa-demo</code>, <code>sc_9418</code>) exist on other pipelines that did not run in this window</td>
+              <td>Multi-select checkboxes</td>
+            </tr>
+            <tr><td>Search</td><td><code>pipeline_name</code>, <code>run_id</code>, <code>pipeline_owner</code>, namespace, tags</td><td>Text</td></tr>
+            <tr><td>Threshold</td><td>Client only; applied to duration</td><td>5 / 10 / 15 / 20 / custom</td></tr>
+            <tr><td>Long-running</td><td><code>run_duration_minutes &gt;= threshold</code></td><td>Flag checkbox</td></tr>
+            <tr><td>SLA breaches</td><td><code>run_alerts_count &gt; 0</code></td><td>Flag checkbox</td></tr>
+            <tr><td>Outliers</td><td>Client formula in §1</td><td>Flag checkbox</td></tr>
+          </tbody>
+        </table>
+        <p>Region, subdomain, product, and environment from the PDF and ACR-2935 are <b>omitted</b> (not shown as disabled controls): <code>pipeline_tags</code> in this tenant did not carry those keys.</p>
+
+        <h3 id="c311">3.11 Policies &amp; alerts tab</h3>
+        <p>Third tab (<b>Policies &amp; alerts</b>). Same sidebar filters as Overview. This is the customer drill-down: <b>pipeline → policies on that pipeline → alerts for those policies</b>.</p>
+        <p><b>Selection (cascading):</b></p>
+        <ol>
+          <li>Check one or more pipelines in panel 1 → panels 2 and 3 show only those pipelines.</li>
+          <li>Check one or more policies in panel 2 → panel 3 shows only those policies.</li>
+          <li>Click a pipeline <b>name</b> (not the checkbox) → right-hand sheet with every policy row and every related alert.</li>
+          <li>Click a heatmap cell → sheet for that pipeline, scoped to that day.</li>
+        </ol>
+        <p>Empty checkbox selection means All in view.</p>
+        <table>
+          <thead><tr><th>Panel</th><th>What it shows</th><th>ADM / client</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><b>1 Monitored pipelines</b></td>
+              <td>Pipelines in the current window, plus <code>snowflake_copy_and_trigger_transform</code> (TIME policies / missed-start incident, <b>0 runs</b> in this window). Columns: policies configured, runs, <b>failed runs</b>, alerts, alert-profile bar</td>
+              <td><code>vw_pipeline_executions_v2</code> + <code>FAIL_ALERT</code> + <code>POLICIES</code> + <code>INCIDENTS</code></td>
+            </tr>
+            <tr>
+              <td><b>2 Policies</b></td>
+              <td>Four rows per pipeline: <b>Duration</b>, <b>Start time</b>, <b>End time</b>, <b>Failure</b>. Columns: last start, last end, duration, failed, alerts, profile. Dimmed <b>Not configured</b> when no ADM TIME policy exists</td>
+              <td>TIME rows: <code>POLICIES</code> from <code>vw_pipeline_monitoring_policies_v2</code>. <b>Failure is not a monitoring policy</b> — it is <code>failure_alert_enabled</code> (<code>FAIL_ALERT</code>). Start/end/duration on a row are the <b>latest run</b> in the window (end = start + duration), or last policy eval when there is no run</td>
+            </tr>
+            <tr>
+              <td><b>3 Alert timeline</b></td>
+              <td>Heatmap: policy × day in the selected timezone. Grey = ran clean, red = alert count, empty = did not run. Top 8 / 16 / All. Click a cell for the sheet</td>
+              <td>ADM <code>INCIDENTS</code> + client duration overrun/outlier (Duration) + run failures (Failure)</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>The 11 pipelines with runs have <b>no</b> ADM TIME policies. Only Failure is configured (run-failure alerting). Duration / start / end show as Not configured; Duration still collects dashboard long-running / outlier alerts. <code>snowflake_copy_and_trigger_transform</code> has 4 TIME policies and the 24 Aug CRITICAL missed-start incident (<code>monitoring_policy_id</code> 5512), with no matching run in the window.</p>
+        <p>Failed-run counts on TIME policy rows are <b>run failures</b> joined for context (failure is not a TIME policy). The Failure row is the actual run-failure alert.</p>
+        <pre>SELECT p.monitoring_policy_id, s.pipeline_name, p.measurement_type,
+       p.comparison_operator, p.comparison_threshold, p.alert_severity, p.is_enabled
+FROM vw_pipeline_monitoring_policies_v2 p
+JOIN vw_pipeline_summary_v2 s ON s.pipeline_id = p.pipeline_id;
+
+SELECT i.incident_id, i.incident_status, i.incident_severity, i.incident_category,
+       i.incident_created_at, s.pipeline_name, i.pipeline_run_id, i.monitoring_policy_id
+FROM vw_pipeline_incidents_v2 i
+JOIN vw_pipeline_summary_v2 s ON s.pipeline_id = i.pipeline_id
+WHERE i.incident_created_at &gt;= NOW() - INTERVAL '7 days';</pre>
+
+        <h2 id="sql">4. SQL actually run against ADM (snapshot build)</h2>
+        <p>All of the following were executed through <code>pipelines_agent</code> on <b>26 Aug 2026 ~04:30 UTC</b>. They populated <code>RAW</code>, <code>EXPECTED</code>, <code>PIPE_META</code>, banner copy, <code>FAIL_ALERT</code>, <code>POLICIES</code>, <code>POLICY_EVALS</code>, and <code>INCIDENTS</code>. The HTML dashboard does not re-run them.</p>
+
+        <h3>Inventory</h3>
+        <pre>SELECT COUNT(DISTINCT pipeline_id) AS total_pipelines
+FROM vw_pipeline_summary_v2;</pre>
+        <pre>SELECT pipeline_source_type, COUNT(*) AS pipeline_count
+FROM vw_pipeline_summary_v2
+GROUP BY pipeline_source_type
+ORDER BY pipeline_count DESC;</pre>
+        <pre>SELECT pipeline_id, pipeline_name, pipeline_tags, pipeline_team,
+       pipeline_owner, pipeline_source_type
+FROM vw_pipeline_summary_v2
+ORDER BY pipeline_name ASC
+LIMIT 50;</pre>
+        <pre>SELECT pipeline_name, pipeline_source_type, pipeline_team, pipeline_owner,
+       pipeline_tags, baseline_lookback_count, baseline_lookback_unit,
+       failure_alert_enabled, failure_alert_severity
+FROM vw_pipeline_summary_v2
+WHERE pipeline_tags IS NOT NULL
+  AND pipeline_tags &lt;&gt; 'NULL'
+  AND pipeline_tags &lt;&gt; ''
+ORDER BY pipeline_name
+LIMIT 40;</pre>
+
+        <h3>Executions (main extract baked into <code>RAW</code>)</h3>
+        <pre>SELECT run_id, pipeline_id, pipeline_name, pipeline_source_type,
+       pipeline_owner, pipeline_team, pipeline_tags, run_status, run_result,
+       run_started_at, run_finished_at, run_duration_minutes,
+       run_alerts_count, run_critical_alerts, run_high_alerts, run_open_alerts,
+       run_alert_types, total_spans, running_spans, errored_spans,
+       finished_spans, span_success_percentage
+FROM vw_pipeline_executions_v2
+WHERE run_started_at &gt;= NOW() - INTERVAL '7 days'
+ORDER BY run_started_at DESC
+LIMIT 80;</pre>
+
+        <h3>KPIs used to validate glance cards and time presets</h3>
+        <pre>SELECT COUNT(*) AS total_runs,
+       COUNT(*) FILTER (WHERE run_result = 'SUCCESS') AS successful_runs,
+       COUNT(*) FILTER (WHERE run_result = 'FAILURE') AS failed_runs,
+       COUNT(*) FILTER (WHERE run_result = 'CANCELLED') AS cancelled_runs,
+       COUNT(*) FILTER (WHERE run_result = 'RUNNING') AS running_runs,
+       ROUND(AVG(run_duration_minutes)::numeric, 2) AS avg_duration_min,
+       ROUND(MIN(run_duration_minutes)::numeric, 2) AS min_duration_min,
+       ROUND(MAX(run_duration_minutes)::numeric, 2) AS max_duration_min
+FROM vw_pipeline_executions_v2
+WHERE run_started_at &gt;= NOW() - INTERVAL '7 days';</pre>
+        <p>Same SELECT with <code>'24 hours'</code> and <code>'3 days'</code> for the other date presets.</p>
+        <pre>SELECT run_status, run_result, COUNT(*) AS runs
+FROM vw_pipeline_executions_v2
+WHERE run_started_at &gt;= NOW() - INTERVAL '7 days'
+GROUP BY run_status, run_result;</pre>
+
+        <h3>Trend</h3>
+        <pre>SELECT DATE(run_started_at) AS run_day,
+       COUNT(*) AS total_runs,
+       COUNT(*) FILTER (WHERE run_result = 'SUCCESS') AS successful,
+       COUNT(*) FILTER (WHERE run_result = 'FAILURE') AS failed,
+       COUNT(*) FILTER (WHERE run_result = 'RUNNING') AS running,
+       COUNT(*) FILTER (WHERE run_result = 'CANCELLED') AS cancelled,
+       ROUND(AVG(run_duration_minutes)::numeric, 2) AS avg_duration_min
+FROM vw_pipeline_executions_v2
+WHERE run_started_at &gt;= NOW() - INTERVAL '7 days'
+GROUP BY DATE(run_started_at)
+ORDER BY run_day;</pre>
+
+        <h3>Expected duration (<code>EXPECTED</code> map) and long-running</h3>
+        <pre>SELECT pipeline_name,
+       COUNT(*) AS runs,
+       COUNT(*) FILTER (WHERE run_result = 'SUCCESS') AS successes,
+       COUNT(*) FILTER (WHERE run_result = 'FAILURE') AS failures,
+       ROUND(AVG(run_duration_minutes)::numeric, 2) AS avg_min,
+       ROUND(MAX(run_duration_minutes)::numeric, 2) AS max_min,
+       COUNT(*) FILTER (WHERE run_duration_minutes &gt;= 10) AS long_running_count
+FROM vw_pipeline_executions_v2
+WHERE run_started_at &gt;= NOW() - INTERVAL '7 days'
+GROUP BY pipeline_name
+ORDER BY long_running_count DESC, avg_min DESC
+LIMIT 25;</pre>
+        <pre>SELECT pipeline_name, pipeline_source_type, pipeline_team, pipeline_owner,
+       run_result, run_status, run_started_at, run_duration_minutes,
+       run_alert_types, run_open_alerts, pipeline_tags
+FROM vw_pipeline_executions_v2
+WHERE run_duration_minutes &gt;= 10
+   OR run_result = 'RUNNING'
+   OR run_status = 'STARTED'
+ORDER BY run_started_at DESC
+LIMIT 40;</pre>
+
+        <h3>Incidents (banner and Policies &amp; alerts tab)</h3>
+        <pre>SELECT incident_status, incident_severity, incident_category,
+       COUNT(DISTINCT incident_id) AS incidents
+FROM vw_pipeline_incidents_v2
+GROUP BY incident_status, incident_severity, incident_category
+ORDER BY incidents DESC;</pre>
+        <pre>SELECT incident_id, incident_status, incident_severity, incident_category,
+       help_description, incident_created_at, pipeline_id,
+       pipeline_run_id, monitoring_policy_id
+FROM vw_pipeline_incidents_v2
+ORDER BY incident_created_at DESC
+LIMIT 20;</pre>
+
+        <h3>Duration policies (long-running banner)</h3>
+        <pre>SELECT COUNT(*) AS duration_policies,
+       COUNT(*) FILTER (WHERE is_enabled) AS enabled_duration_policies
+FROM vw_pipeline_monitoring_policies_v2
+WHERE measurement_type = 'DURATION';</pre>
+        <pre>SELECT policy_name, policy_category, measurement_type, comparison_type,
+       comparison_operator, comparison_threshold, comparison_units,
+       alert_severity, is_enabled, monitored_entity_type, COUNT(*) AS policy_count
+FROM vw_pipeline_monitoring_policies_v2
+GROUP BY policy_name, policy_category, measurement_type, comparison_type,
+         comparison_operator, comparison_threshold, comparison_units,
+         alert_severity, is_enabled, monitored_entity_type
+ORDER BY policy_count DESC
+LIMIT 40;</pre>
+
+        <h3>Policies &amp; alerts tab (<code>FAIL_ALERT</code>, <code>POLICIES</code>, <code>POLICY_EVALS</code>, <code>INCIDENTS</code>)</h3>
+        <pre>SELECT pipeline_id, pipeline_name, pipeline_uid, pipeline_source_type,
+       pipeline_owner, failure_alert_enabled, failure_alert_severity, failure_alert_name
+FROM vw_pipeline_summary_v2
+WHERE pipeline_name IN (
+  'databricks_shell','krish_dbt_job','dag2_load_transform','simple_failure_pipeline',
+  'listPackages','dag1_ingest_s3_to_s3','adoc_bronze_to_silver_clinical_pipeline',
+  'eli_lilly_glue_pipeline_python','eli_lilly_glue_pipeline','adoc_openlineage_validation',
+  'manual_adoc_openlineage_validation','snowflake_copy_and_trigger_transform'
+);</pre>
+        <pre>SELECT p.monitoring_policy_id, p.pipeline_id, s.pipeline_name, p.policy_name,
+       p.policy_category, p.measurement_type, p.alert_severity, p.is_enabled,
+       p.comparison_type, p.comparison_operator, p.comparison_threshold, p.comparison_units
+FROM vw_pipeline_monitoring_policies_v2 p
+LEFT JOIN vw_pipeline_summary_v2 s ON s.pipeline_id = p.pipeline_id
+ORDER BY s.pipeline_name, p.policy_name;</pre>
+        <pre>SELECT e.execution_id, e.monitoring_policy_id, p.policy_name, p.measurement_type,
+       s.pipeline_name, e.pipeline_run_id, e.evaluation_status, e.alert_raised, e.evaluated_at,
+       r.run_started_at, r.run_finished_at, r.run_duration_minutes, r.run_result
+FROM vw_pipeline_monitoring_policy_executions_v2 e
+LEFT JOIN vw_pipeline_monitoring_policies_v2 p ON p.monitoring_policy_id = e.monitoring_policy_id
+LEFT JOIN vw_pipeline_summary_v2 s ON s.pipeline_id = e.pipeline_id
+LEFT JOIN vw_pipeline_executions_v2 r ON r.run_id = e.pipeline_run_id
+WHERE e.evaluated_at &gt;= NOW() - INTERVAL '7 days'
+ORDER BY e.evaluated_at DESC;</pre>
+
+        <h2 id="client">5. What is computed only in the browser (not in ADM)</h2>
+        <table>
+          <thead><tr><th>Metric</th><th>Rule</th></tr></thead>
+          <tbody>
+            <tr><td>Long-running</td><td><code>duration &gt;= threshold</code></td></tr>
+            <tr><td>Recurring overrun</td><td>Same pipeline has ≥2 long-running runs in the window</td></tr>
+            <tr><td>Outlier</td><td><code>duration &gt; expected + max(2, 0.2 × expected)</code></td></tr>
+            <tr><td>Expected duration</td><td>7-day <code>AVG(run_duration_minutes)</code> stored in <code>EXPECTED</code></td></tr>
+            <tr><td>Run severity</td><td>Highest of Critical / High / Medium among synthetic alerts, else No alerts</td></tr>
+            <tr><td>Duration overrun alert</td><td>Long-running run; HIGH if <code>duration &gt; expected + 2</code>, else MEDIUM</td></tr>
+            <tr><td>Duration outlier alert</td><td>Outlier runs, TIME / HIGH</td></tr>
+            <tr><td>Success / failure rate</td><td>From <code>run_result</code> counts</td></tr>
+            <tr><td>Stalled</td><td>No live RUNNING rows at snapshot → 0</td></tr>
+            <tr><td>Namespace</td><td>Prefix of <code>pipeline_uid</code></td></tr>
+            <tr><td>Untagged</td><td><code>pipeline_tags</code> empty or null</td></tr>
+            <tr><td>Timezone display</td><td><code>run_started_at</code> (UTC) formatted with <code>Intl</code> in the selected IANA zone</td></tr>
+            <tr><td>Custom time range bounds</td><td>Calendar date + clock time interpreted in the selected timezone</td></tr>
+            <tr><td>Mix / trend chart types</td><td>Client drawing only (pie, bar, heatmap, line)</td></tr>
+            <tr><td>Failure “policy” on the Policies &amp; alerts tab</td><td><code>failure_alert_enabled</code> / <code>failure_alert_severity</code> from <code>vw_pipeline_summary_v2</code>, not <code>vw_pipeline_monitoring_policies_v2</code></td></tr>
+            <tr><td>Policy start / end / duration columns</td><td>Latest run <code>run_started_at</code> + <code>run_duration_minutes</code> (end = start + duration). Empty when the pipeline has no run in the window</td></tr>
+          </tbody>
+        </table>
+
+        <h2 id="gaps">6. Gaps vs Merck PDF / ACR filters</h2>
+        <p>These dimensions were requested (PDF, ACR-2934, ACR-2935) but <b>are not populated</b> on the snapshot pipelines, so they are <b>not shown</b> on the HTML dashboard (not disabled placeholders):</p>
+        <ul>
+          <li>Region, Product, Business Domain, Environment, Subdomain</li>
+        </ul>
+        <p><b>Namespace</b> is derived from <code>pipeline_uid</code> (Airflow instance / project prefix) and is an active multi-select filter. Values in this window: <code>mwaa_aws</code>, <code>airflow-on-prem-validation</code>, <code>manual-airflow-prod-onprem</code>, <code>krish_pipeline</code>, <code>krish_dbt.krish_dbt_demo</code>.</p>
+        <p><b>Tags:</b> <code>pipeline_tags</code> exists on <code>vw_pipeline_summary_v2</code> / <code>vw_pipeline_executions_v2</code>. The 11 pipelines with runs in this window have <b>no tags</b> (<b>Untagged</b>). Other estate pipelines carry <code>rzr</code>, <code>acr</code>, <code>demo_inthecall</code>, <code>hsbc</code>, <code>rsa-demo</code>, <code>sc_9418</code> — those values stay in the Tags list labeled “(no runs in window)”; selecting one shows 0 runs in this snapshot.</p>
+        <p>Live auto-refresh (ACR-2935) is <b>not</b> implemented; refresh means re-query ADM and replace <code>RAW</code>.</p>
+      </article>
+    </main>
+  </div>
+</body>
+</html>
