@@ -8,11 +8,11 @@ Share this with Merck (root path, same style as the Mantis demo):
 
 **https://merck-pipeline-observability.vercel.app/**
 
-Data lineage: https://merck-pipeline-observability.vercel.app/data-lineage.html
-
 GitHub Pages (backup): https://ad-krish.github.io/merck-pipeline-observability/
 
 Repo: https://github.com/ad-krish/merck-pipeline-observability
+
+Lineage docs stay local (`data-lineage.html`) and are not published on Vercel.
 
 ## How GitHub is used
 
