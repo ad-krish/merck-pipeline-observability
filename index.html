@@ -236,6 +236,14 @@
     .badge.ATRISK { background: #f6e7b8; color: #7a5b10; }
     .ghead { background: #f8faf9; font-weight: 700; font-size: 12px; color: var(--muted); }
     .act { color: var(--teal-deep); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }
+    .run-id { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; }
+    .run-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; }
+    .run-chip {
+      border: 1px solid var(--line); background: #fff; border-radius: 6px;
+      padding: 4px 8px; cursor: pointer; font-size: 11px; color: var(--ink);
+    }
+    .run-chip:hover { border-color: var(--teal); }
+    .run-chip.on { background: #e7f0ee; border-color: var(--teal); font-weight: 650; }
     .badge.TIME { background: #efe7f6; color: #4a3768; }
     .sheet-back { position: fixed; inset: 0; background: rgba(16,24,40,.28); display: none; z-index: 20; }
     .sheet-back.on { display: block; }
@@ -430,7 +438,7 @@
       <div class="page-head">
         <div>
           <h1 id="title">Pipeline monitoring overview</h1>
-          <p class="sub" id="subtitle">Operational health for the selected window. Click a KPI, donut slice, or table row to investigate.</p>
+          <p class="sub" id="subtitle">Operational health for the selected window. Click a pipeline name or run ID to open that run.</p>
         </div>
         <div class="tabs">
           <button id="tab-overview" class="active" type="button">Overview</button>
@@ -777,7 +785,7 @@
 
     const state = {
       view: "overview", day: "", grain: "day", metric: "status", alertDim: "type",
-      selectedPipe: "", selectedRun: "", sheetOpen: false, tz: "UTC",
+      selectedPipe: "", selectedRun: "", sheetDay: "", sheetOpen: false, tz: "UTC",
       groupBy: "type", sheetSev: "ALL", sheetStatus: "ALL", tableGroup: "none",
       splits: { a: "source", b: "status", c: "severity", d: "severity" },
       chart: { g1: "pie", g2: "pie", g3: "pie", trend: "bar", alerts: "bar" },
@@ -1139,6 +1147,7 @@
       state.day = "";
       state.selectedPipe = "";
       state.selectedRun = "";
+      state.sheetDay = "";
       state.sheetOpen = false;
       state.tracePipes = [];
       state.tracePols = [];
@@ -1528,6 +1537,23 @@
     function lastRunOf(runs) {
       return runs.slice().sort((a, b) => b.ts - a.ts)[0] || null;
     }
+    function latestAlertRunId(alerts) {
+      const hit = (alerts || []).filter(a => a.run && a.run.id).sort((a, b) => b.ts - a.ts)[0];
+      return hit ? hit.run.id : "";
+    }
+    function uniqueAlertRunId(alerts) {
+      const ids = [];
+      (alerts || []).forEach(a => {
+        if (a.run && a.run.id && ids.indexOf(a.run.id) < 0) ids.push(a.run.id);
+      });
+      return ids.length === 1 ? ids[0] : "";
+    }
+    function openSheet(pipe, runId) {
+      state.selectedPipe = pipe || "";
+      state.selectedRun = runId || "";
+      state.sheetOpen = true;
+      render();
+    }
     function alertsForPipeline(pipe, runs, f) {
       const out = [];
       runs.forEach(r => {
@@ -1650,7 +1676,7 @@
         `<div class="trace-stat"><span class="trace-num">1</span><div><p class="kicker">Monitored pipelines</p><b>${selP.length ? selP.length + " selected" : "All " + all.length + " in view"}</b></div></div>` +
         `<div class="trace-stat"><span class="trace-num">2</span><div><p class="kicker">Policies</p><b>${selPol.length ? selPol.length + " selected" : visSlots.filter(s => s.configured).length + " configured · " + visSlots.length + " rows"}</b></div></div>` +
         `<div class="trace-stat"><span class="trace-num">3</span><div><p class="kicker">Alerts</p><b>${visAlerts.length} in the timeline below</b></div></div>`;
-      $("trace-note").textContent = "Failure is the pipeline run-failure alert (not a TIME monitoring policy). Start / end / duration rows are ADM policies when configured; otherwise they stay in the list as Not configured. Duration alerts from the dashboard threshold still attach to Duration.";
+      $("trace-note").textContent = "Click a pipeline name, run ID, or a heatmap cell to open the specific run that raised the alert. Failure is the pipeline run-failure alert (not a TIME monitoring policy). Start / end / duration rows are ADM policies when configured; otherwise they stay in the list as Not configured."
       $("trace-p-sub").textContent = (selP.length ? selP.length + " selected · " : "Select one or more rows to trace their policies. ") + all.length + " pipelines in scope.";
       $("trace-pol-sub").textContent = (selP.length ? selP.join(", ") : "All pipelines in view") + " — select a policy to scope the timeline.";
       $("trace-by-asset").classList.toggle("on", state.traceByAsset);
@@ -1662,10 +1688,14 @@
       $("trace-pipes").innerHTML = all.map(p => {
         const on = selP.indexOf(p.pipeline) >= 0;
         const sc = sevCounts(p.alerts);
+        const rid = latestAlertRunId(p.alerts);
+        const runMeta = rid
+          ? ` · <button type="button" class="act run-id" data-open="${esc(p.pipeline)}" data-rid="${esc(rid)}">run ${esc(rid)}</button>`
+          : (p.alerts.length ? " · no run id on alert" : "");
         return `<tr class="${on ? "pipe-sel" : ""}" data-pipe="${esc(p.pipeline)}">
           <td class="chk"><input type="checkbox" ${on ? "checked" : ""} data-pipe="${esc(p.pipeline)}" /></td>
-          <td><div class="pname" data-open="${esc(p.pipeline)}">${esc(p.pipeline)}</div>
-            <div class="meta">${esc(SOURCE_LABEL[p.source] || p.source)} · ${esc(p.namespace)} · ${esc(p.owner)}</div></td>
+          <td><div class="pname" data-open="${esc(p.pipeline)}" data-rid="${esc(rid)}">${esc(p.pipeline)}</div>
+            <div class="meta">${esc(SOURCE_LABEL[p.source] || p.source)} · ${esc(p.namespace)} · ${esc(p.owner)}${runMeta}</div></td>
           <td class="num">${p.policies}</td>
           <td class="num">${p.runs.length}</td>
           <td class="num">${p.failed ? `<span class="fail">${p.failed}</span>` : "0"}</td>
@@ -1678,10 +1708,14 @@
         const on = selPol.indexOf(s.key) >= 0;
         const sc = sevCounts(s.alerts);
         const dur = s.duration == null ? "—" : fmt(s.duration) + " min";
+        const rid = uniqueAlertRunId(s.alerts) || latestAlertRunId(s.alerts) || (s.last && s.last.id) || "";
+        const runBtn = rid
+          ? ` · <button type="button" class="act run-id" data-open="${esc(s.pipe)}" data-rid="${esc(rid)}">run ${esc(rid)}</button>`
+          : "";
         return `<tr class="${on ? "sel" : ""} ${s.configured ? "" : "notcfg"}" data-pkey="${esc(s.key)}">
           <td class="chk"><input type="checkbox" ${on ? "checked" : ""} data-pkey="${esc(s.key)}" /></td>
           <td><div class="pname">${esc(s.name)}</div>
-            <div class="meta">${hidePipe ? "" : esc(s.pipe) + " · "}${esc(KIND_META[s.kind].label)} · ${esc(s.thr)}</div></td>
+            <div class="meta">${hidePipe ? "" : esc(s.pipe) + " · "}${esc(KIND_META[s.kind].label)} · ${esc(s.thr)}${runBtn}</div></td>
           <td>${esc(s.start)}</td>
           <td>${esc(s.end)}</td>
           <td class="num">${dur}</td>
@@ -1714,7 +1748,7 @@
       const limit = state.traceLimit === "all" ? rankedHeat.length : Number(state.traceLimit) || 16;
       const heatRows = rankedHeat.slice(0, limit);
       $("trace-hm-sub").textContent = (selPol.length || selP.length ? "Scoped selection" : "All policies in view") +
-        " — per day in " + tzLab + ". Showing " + heatRows.length + " of " + configuredVis.length + " policy rows.";
+        " — per day in " + tzLab + ". Click a cell to open the run that raised the alert. Showing " + heatRows.length + " of " + configuredVis.length + " policy rows.";
       if (!heatRows.length || !days.length) {
         $("trace-heat").innerHTML = `<p class="hint">No executions or alerts in this window to plot.</p>`;
       } else {
@@ -1722,14 +1756,19 @@
         const head = `<th>Policy</th>` + days.map(d => `<th>${esc(d.slice(5))}</th>`).join("") + `<th>All</th>`;
         const body = heatRows.map(s => {
           const cells = days.map(d => {
-            const n = s.alerts.filter(a => a.day === d).length;
+            const dayAlerts = s.alerts.filter(a => a.day === d);
+            const n = dayAlerts.length;
+            const rid = uniqueAlertRunId(dayAlerts);
+            const rids = [];
+            dayAlerts.forEach(a => { if (a.run && a.run.id && rids.indexOf(a.run.id) < 0) rids.push(a.run.id); });
             const ran = s.pipe === "snowflake_copy_and_trigger_transform"
               ? POLICY_EVALS.some(e => e.policyId === s.id && tzParts(stampTs(e.at), f.tz).ymd === d)
               : rows.some(r => r.pipeline === s.pipe && r.localDay === d);
             if (n) {
               const t = Math.min(1, n / maxN);
               const bg = `rgb(${Math.round(196 + (179 - 196) * t)},${Math.round(92 + (38 - 92) * t)},${Math.round(38 + (30 - 38) * t)})`;
-              return `<td class="cell hit" style="background:${bg}" data-pkey="${esc(s.key)}" data-day="${esc(d)}">${n}</td>`;
+              const tip = n + " alert(s)" + (rids.length ? " · run " + rids.join(", ") : " · no run id");
+              return `<td class="cell hit" style="background:${bg}" data-pkey="${esc(s.key)}" data-day="${esc(d)}" data-rid="${esc(rid)}" title="${esc(tip)}">${n}</td>`;
             }
             if (ran) return `<td class="cell clean" data-pkey="${esc(s.key)}" data-day="${esc(d)}"></td>`;
             return `<td class="cell empty"></td>`;
@@ -1741,31 +1780,41 @@
 
       $("trace-pipes").querySelectorAll("tr[data-pipe]").forEach(tr => {
         tr.onclick = e => {
-          if (e.target.closest(".pname")) return;
+          if (e.target.closest(".pname") || e.target.closest(".run-id")) return;
           toggleTracePipe(tr.getAttribute("data-pipe"));
         };
       });
       $("trace-pipes").querySelectorAll("input[data-pipe]").forEach(cb => {
         cb.onclick = e => { e.stopPropagation(); toggleTracePipe(cb.getAttribute("data-pipe")); };
       });
-      $("trace-pipes").querySelectorAll(".pname[data-open]").forEach(el => {
+      $("trace-pipes").querySelectorAll("[data-open]").forEach(el => {
         el.onclick = e => {
           e.stopPropagation();
           const pipe = el.getAttribute("data-open");
+          const rec = all.find(p => p.pipeline === pipe);
+          const rid = el.getAttribute("data-rid") || latestAlertRunId((rec && rec.alerts) || []);
           if (state.tracePipes.indexOf(pipe) < 0) state.tracePipes = state.tracePipes.concat([pipe]);
-          state.selectedPipe = pipe;
-          state.sheetOpen = true;
-          render();
+          state.sheetDay = "";
+          openSheet(pipe, rid);
         };
       });
       $("trace-pols").querySelectorAll("tr[data-pkey]").forEach(tr => {
         tr.onclick = e => {
-          if (e.target.closest("input")) return;
+          if (e.target.closest("input") || e.target.closest(".run-id")) return;
           toggleTracePol(tr.getAttribute("data-pkey"));
         };
       });
       $("trace-pols").querySelectorAll("input[data-pkey]").forEach(cb => {
         cb.onclick = e => { e.stopPropagation(); toggleTracePol(cb.getAttribute("data-pkey")); };
+      });
+      $("trace-pols").querySelectorAll("[data-open]").forEach(el => {
+        el.onclick = e => {
+          e.stopPropagation();
+          const pipe = el.getAttribute("data-open");
+          if (state.tracePipes.indexOf(pipe) < 0) state.tracePipes = state.tracePipes.concat([pipe]);
+          state.sheetDay = "";
+          openSheet(pipe, el.getAttribute("data-rid") || "");
+        };
       });
       $("trace-heat").querySelectorAll("td.hit, td.clean").forEach(td => {
         td.onclick = () => {
@@ -1773,11 +1822,15 @@
           const day = td.getAttribute("data-day");
           const slot = visSlots.find(s => s.key === key);
           if (!slot) return;
-          state.selectedPipe = slot.pipe;
-          state.day = day;
-          state.sheetOpen = true;
+          const dayAlerts = slot.alerts.filter(a => a.day === day);
+          let rid = td.getAttribute("data-rid") || uniqueAlertRunId(dayAlerts) || latestAlertRunId(dayAlerts);
+          if (!rid) {
+            const dayRun = rows.filter(r => r.pipeline === slot.pipe && r.localDay === day).sort((a, b) => b.ts - a.ts)[0];
+            rid = dayRun ? dayRun.id : "";
+          }
           if (state.tracePipes.indexOf(slot.pipe) < 0) state.tracePipes = state.tracePipes.concat([slot.pipe]);
-          render();
+          state.sheetDay = rid ? "" : day;
+          openSheet(slot.pipe, rid);
         };
       });
     }
@@ -1844,7 +1897,7 @@
 
       if (state.view === "trace") {
         $("title").textContent = "Policies and alerts";
-        $("subtitle").textContent = "Select a pipeline (or several) to see configured start / end / duration policies, failure alerting, and related alerts.";
+        $("subtitle").textContent = "Select a pipeline, run ID, or heatmap cell to open the specific run that raised the alert.";
         $("banner").innerHTML = "<b>Failure is not a TIME monitoring policy.</b> Every pipeline in this snapshot has run-failure alerting enabled. Only snowflake_copy_and_trigger_transform has ADM start / end / duration policies — and a CRITICAL missed-start incident this window.";
         renderTrace(rows, f);
         renderSheet(rows, f);
@@ -1883,7 +1936,7 @@
 
       if (state.view === "overview") {
         $("title").textContent = "Pipeline monitoring overview";
-        $("subtitle").textContent = "Operational health for the selected window. Click a KPI, donut, or table row to investigate.";
+        $("subtitle").textContent = "Operational health for the selected window. Click a pipeline name or run ID to open that run.";
         $("banner").innerHTML = "<b>Open TIME incident — missed trigger.</b> snowflake_copy_and_trigger_transform did not start 17–24 Aug (CRITICAL). simple_failure_pipeline fails every daily run.";
         $("glance-title").textContent = "Status mix";
         $("glance").innerHTML =
@@ -2037,7 +2090,7 @@
     function renderTable(rows, f) {
       const key = state.tableGroup;
       const sorted = rows.slice().sort((a, b) => (b.result === "FAILURE") - (a.result === "FAILURE") || b.ts - a.ts);
-      $("table-cap").textContent = sorted.length + " runs · click a pipeline name for history and alerts · Flags: long-running, outlier";
+      $("table-cap").textContent = sorted.length + " runs · click a pipeline name or run ID to open that run · Flags: long-running, outlier";
       [...$("table-groups").querySelectorAll("button")].forEach(b => {
         b.classList.toggle("on", b.getAttribute("data-tg") === key);
       });
@@ -2056,7 +2109,8 @@
         const sla = slaLabel(r, f.thr);
         const flags = [r.duration >= f.thr ? "Long" : "", r.outlier ? "Outlier" : ""].filter(Boolean).join(" · ") || "—";
         return `<tr class="${r.id===state.selectedRun?"sel":""}" data-pipe="${r.pipeline}" data-rid="${r.id}">
-          <td><button class="act pname" type="button">${r.pipeline}</button><div class="meta">run ${r.id}</div></td>
+          <td><button class="act pname" type="button">${r.pipeline}</button>
+            <div class="meta"><button class="act run-id" type="button" data-rid="${r.id}">run ${r.id}</button></div></td>
           <td>${r.namespace}<div class="meta">${r.tags.length ? r.tags.join(", ") : "Untagged"}</div></td>
           <td>${r.source}<div class="meta">${r.owner}</div></td>
           <td><span class="badge ${r.result}">${r.result === "SUCCESS" ? "Success" : "Failed"}</span></td>
@@ -2065,7 +2119,7 @@
           <td class="num">${fmt(r.duration)} min<div class="meta">vs ${fmt(r.expected)}</div></td>
           <td><span class="badge ${slaClass(sla)}">${sla}</span></td>
           <td>${flags}</td>
-          <td><button class="act" data-open="${r.pipeline}" type="button">Alerts</button></td>
+          <td><button class="act" data-open="${r.pipeline}" type="button">Open run</button></td>
         </tr>`;
       };
       $("run-table").innerHTML = groups.map(g =>
@@ -2076,14 +2130,13 @@
         tr.onclick = e => {
           const pipe = tr.getAttribute("data-pipe");
           const rid = tr.getAttribute("data-rid");
-          if (e.target.classList.contains("pname") || e.target.getAttribute("data-open")) {
-            state.selectedPipe = pipe;
-            state.selectedRun = rid;
-            state.sheetOpen = true;
-          } else {
-            state.selectedRun = state.selectedRun === rid ? "" : rid;
-            state.selectedPipe = pipe;
+          if (e.target.closest(".pname") || e.target.closest("[data-open]") || e.target.closest(".run-id")) {
+            state.sheetDay = "";
+            openSheet(pipe, rid);
+            return;
           }
+          state.selectedRun = state.selectedRun === rid ? "" : rid;
+          state.selectedPipe = pipe;
           render();
         };
       });
@@ -2092,22 +2145,27 @@
       const back = $("sheet-back");
       const sheet = $("sheet");
       const pipe = state.selectedPipe;
-      const pruns = rows.filter(r => r.pipeline === pipe);
+      const allPruns = rows.filter(r => r.pipeline === pipe);
       const extra = extraPipelines().find(p => p.pipeline === pipe);
-      if (!state.sheetOpen || !pipe || (!pruns.length && !extra)) {
+      if (!state.sheetOpen || !pipe || (!allPruns.length && !extra)) {
         back.className = "sheet-back";
         sheet.className = "sheet";
         sheet.innerHTML = "";
         return;
       }
-      const sample = pruns[0] || extra;
-      const allAlerts = alertsForPipeline(pipe, pruns, f);
+      const focusRun = state.selectedRun ? (allPruns.find(r => r.id === state.selectedRun) || null) : null;
+      const pruns = focusRun ? [focusRun] : allPruns;
+      const sample = focusRun || pruns[0] || extra;
+      const allAlerts = alertsForPipeline(pipe, allPruns, f);
       let evs = allAlerts.filter(e => {
+        if (focusRun && !(e.run && e.run.id === focusRun.id)) return false;
+        if (!focusRun && state.sheetDay && e.day !== state.sheetDay) return false;
         if (state.sheetSev !== "ALL" && e.sev !== state.sheetSev) return false;
         if (state.sheetStatus !== "ALL" && e.status !== state.sheetStatus) return false;
         return true;
       });
-      const slots = buildPolicySlots(pipe, pruns, allAlerts, f);
+      const pipeSlots = buildPolicySlots(pipe, allPruns, allAlerts, f);
+      const slots = buildPolicySlots(pipe, pruns, evs, f);
       const groups = new Map();
       evs.forEach(e => {
         const key = state.groupBy === "severity" ? e.sev : state.groupBy === "status" ? e.status : state.groupBy === "signal" ? e.cat : e.type;
@@ -2115,28 +2173,37 @@
         groups.get(key).push(e);
       });
       const failed = pruns.filter(r => r.result === "FAILURE").length;
-      const longn = pruns.filter(r => r.duration >= f.thr).length;
+      const runChips = allPruns.slice().sort((a, b) => b.ts - a.ts).map(r =>
+        `<button type="button" class="run-chip${focusRun && focusRun.id === r.id ? " on" : ""}" data-focus-run="${esc(r.id)}">${esc(r.id)} · ${r.result === "FAILURE" ? "Failed" : "Success"}</button>`
+      ).join("");
+      const focusMeta = focusRun
+        ? `Run <span class="run-id">${esc(focusRun.id)}</span> · ${focusRun.result === "FAILURE" ? "Failed" : "Success"} · ${esc(focusRun.localStamp)} · ${fmt(focusRun.duration)} min`
+        : (state.sheetDay ? "Alerts on " + esc(state.sheetDay) : "All runs in the current window");
       back.className = "sheet-back on";
       sheet.className = "sheet on";
       sheet.innerHTML = `<div class="sheet-h">
         <div class="meta">${esc(sample.source)} · ${esc(sample.namespace)} · ${esc(sample.owner)}</div>
         <h3>${esc(pipe)}</h3>
+        <div class="meta">${focusMeta}</div>
         <div class="tags">
           <span class="tag">SOURCE ${esc(sample.source)}</span>
           <span class="tag">NAMESPACE ${esc(sample.namespace)}</span>
           <span class="tag">${sample.tags && sample.tags.length ? "TAG " + sample.tags.join(" · ").toUpperCase() : "UNTAGGED"}</span>
           <span class="tag">OWNER ${esc(sample.owner)}</span>
-          <span class="tag">${slots.filter(s => s.configured).length} POLICIES CONFIGURED</span>
+          ${focusRun ? `<span class="tag">RUN ${esc(focusRun.id)}</span>` : ""}
+          <span class="tag">${pipeSlots.filter(s => s.configured).length} POLICIES CONFIGURED</span>
         </div>
+        ${allPruns.length ? `<div class="hint" style="margin-top:10px">Runs in this window</div>
+        <div class="run-chips">${runChips}${focusRun || state.sheetDay ? `<button type="button" class="run-chip" id="sheet-all-runs">All runs</button>` : ""}</div>` : ""}
       </div>
       <div class="sheet-kpis">
-        <div><b>${slots.filter(s => s.configured).length}</b><span class="hint">policies</span></div>
-        <div><b>${pruns.length}</b><span class="hint">runs</span></div>
+        <div><b>${pipeSlots.filter(s => s.configured).length}</b><span class="hint">policies</span></div>
+        <div><b>${pruns.length}</b><span class="hint">${focusRun ? "this run" : "runs"}</span></div>
         <div><b class="${failed?"fail":""}">${failed}</b><span class="hint">failed</span></div>
         <div><b>${evs.length}</b><span class="hint">alerts shown</span></div>
       </div>
       <div class="sheet-tools">
-        <div class="hint">Policies on this pipeline</div>
+        <div class="hint">${focusRun ? "Policies on this run" : "Policies on this pipeline"}</div>
         <div style="margin:6px 0 12px">${slots.map(s =>
           `<div class="meta" style="padding:4px 0">${esc(KIND_META[s.kind].label)} · ${esc(s.name)} · ${s.configured ? esc(s.thr) : "Not configured"} · start ${esc(s.start)} · end ${esc(s.end)} · ${s.duration == null ? "—" : fmt(s.duration) + " min"} · failed ${s.failed} · ${s.alerts.length} alerts</div>`
         ).join("")}</div>
@@ -2161,16 +2228,29 @@
       <div class="sheet-list">${[...groups.entries()].map(([g, list]) =>
         `<div class="evt"><div class="meta">${esc(g)} · ${list.length}</div>` +
         list.map(e => {
-          const when = e.run ? `${e.run.localStamp} · run ${e.run.id} · ${fmt(e.run.duration)} min` : tzParts(e.ts, f.tz).stamp;
+          const runBtn = e.run
+            ? `<button type="button" class="act run-id" data-focus-run="${esc(e.run.id)}">run ${esc(e.run.id)}</button> · ${fmt(e.run.duration)} min`
+            : "no run id";
+          const when = e.run ? `${esc(e.run.localStamp)} · ${runBtn}` : esc(tzParts(e.ts, f.tz).stamp) + " · no run id";
           return `<div class="evt-top" style="margin-top:8px"><div>
           <div><b>${esc(e.type)}</b></div>
-          <div class="meta">${esc(e.title)}<br>${esc(when)}</div>
+          <div class="meta">${esc(e.title)}<br>${when}</div>
         </div><div><span class="badge ${e.sev}">${e.sev}</span> <span class="badge ${e.status}">${e.status}</span></div></div>`;
         }).join("") +
         `</div>`).join("") || `<div class="evt hint">No alerts for the current sheet filters</div>`}</div>`;
       sheet.querySelectorAll("button[data-g]").forEach(b => b.onclick = () => { state.groupBy = b.dataset.g; render(); });
       sheet.querySelectorAll("button[data-sv]").forEach(b => b.onclick = () => { state.sheetSev = b.dataset.sv; render(); });
       sheet.querySelectorAll("button[data-st]").forEach(b => b.onclick = () => { state.sheetStatus = b.dataset.st; render(); });
+      sheet.querySelectorAll("[data-focus-run]").forEach(b => {
+        b.onclick = () => {
+          state.selectedRun = b.getAttribute("data-focus-run");
+          state.sheetDay = "";
+          render();
+        };
+      });
+      if ($("sheet-all-runs")) {
+        $("sheet-all-runs").onclick = () => { state.selectedRun = ""; state.sheetDay = ""; render(); };
+      }
       $("scope-pipe").onclick = () => { state.multi.pipe = [pipe]; state.sheetOpen = false; render(); };
     }
     function setView(view) {
@@ -2236,7 +2316,7 @@
       resetFilters(state.view === "long");
       render();
     };
-    $("sheet-back").onclick = () => { state.sheetOpen = false; render(); };
+    $("sheet-back").onclick = () => { state.sheetOpen = false; state.sheetDay = ""; render(); };
     function tzLabel(z) { return z === "UTC" ? "UTC" : String(z).replace(/_/g, " "); }
     function initTzones() {
       let all = ["UTC"];
@@ -2302,7 +2382,7 @@
       if (e.key === "Escape") {
         $("tz-list").hidden = true;
         MS_KEYS.forEach(k => { $("ms-" + k + "-panel").hidden = true; });
-        if (state.sheetOpen) { state.sheetOpen = false; render(); }
+        if (state.sheetOpen) { state.sheetOpen = false; state.sheetDay = ""; render(); }
       }
     });
     $("btn-save").onclick = () => {
