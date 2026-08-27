@@ -252,7 +252,8 @@
     .sheet-h { padding: 16px 18px 10px; border-bottom: 1px solid var(--line); }
     .sheet-h h3 { margin: 4px 0 8px; font-size: 16px; }
     .tags { display: flex; flex-wrap: wrap; gap: 6px; }
-    .tag { background: #f1f3f5; border-radius: 4px; padding: 3px 7px; font-size: 11px; color: #445; }
+    .tag.miss { background: #f4c7c4; color: #8a1f18; }
+    .tag.oktag { background: #d7ebe6; color: #164e48; }
     .sheet-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 12px 18px; border-bottom: 1px solid var(--line); }
     .sheet-kpis b { display: block; font-size: 18px; }
     .sheet-tools { padding: 10px 18px; border-bottom: 1px solid var(--line); }
@@ -454,6 +455,36 @@
       </div>
       <div class="glance" id="glance"></div>
 
+      <div id="gaps-wrap">
+      <div class="section">
+        <h2>Unmonitored policies</h2>
+        <div class="toggles" id="gaps-kinds">
+          <button type="button" data-gap="ALL" class="on">Any gap</button>
+          <button type="button" data-gap="DURATION">Missing duration</button>
+          <button type="button" data-gap="START_TIME">Missing start time</button>
+          <button type="button" data-gap="END_TIME">Missing end time</button>
+          <button type="button" data-gap="FAILURE">Missing failure</button>
+        </div>
+      </div>
+      <div class="card">
+        <p class="hint" id="gaps-cap" style="padding:10px 12px 0"></p>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Pipeline</th>
+                <th>Namespace</th>
+                <th>Source / owner</th>
+                <th class="num">Configured</th>
+                <th>Not monitored</th>
+              </tr>
+            </thead>
+            <tbody id="gaps-table"></tbody>
+          </table>
+        </div>
+      </div>
+      </div>
+
       <div class="section">
         <h2 id="trend-title">Run status trend</h2>
         <div class="toggles">
@@ -576,9 +607,9 @@
                   <tr>
                     <th class="chk"></th>
                     <th>Policy</th>
-                    <th id="pol-start-th">Start</th>
-                    <th>End</th>
-                    <th class="num">Duration</th>
+                    <th>Type</th>
+                    <th>Threshold</th>
+                    <th>Severity</th>
                     <th class="num">Failed</th>
                     <th class="num">Alerts</th>
                     <th>Profile</th>
@@ -785,7 +816,7 @@
     const state = {
       view: "overview", day: "", grain: "day", metric: "status", alertDim: "type",
       selectedPipe: "", selectedRun: "", sheetOpen: false, tz: "UTC",
-      groupBy: "type", sheetSev: "ALL", sheetStatus: "ALL", tableGroup: "none",
+      groupBy: "type", sheetSev: "ALL", sheetStatus: "ALL", tableGroup: "none", gapKind: "ALL",
       splits: { a: "source", b: "status", c: "severity", d: "severity" },
       chart: { g1: "pie", g2: "pie", g3: "pie", trend: "bar", alerts: "bar" },
       range: { time: "7d", from: "2026-08-19", to: "2026-08-26", fromT: "00:00", toT: "23:59", runsN: 25 },
@@ -1149,6 +1180,7 @@
       state.sheetOpen = false;
       state.tracePipes = [];
       state.tracePols = [];
+      state.gapKind = "ALL";
       syncCustom();
       syncThr();
     }
@@ -1672,26 +1704,59 @@
       alerts.forEach(a => { if (c[a.sev] != null) c[a.sev] += 1; });
       return c;
     }
+    function missingKinds(p) {
+      return KIND_ORDER.filter(k => !p.slots.some(s => s.kind === k && s.configured));
+    }
+    function renderGaps(rows, f) {
+      const wrap = $("gaps-wrap");
+      if (state.view !== "overview") {
+        wrap.hidden = true;
+        return;
+      }
+      wrap.hidden = false;
+      [...$("gaps-kinds").querySelectorAll("button")].forEach(b => {
+        b.classList.toggle("on", b.getAttribute("data-gap") === state.gapKind);
+      });
+      const list = monitoredSet(rows, f).map(p => Object.assign({}, p, { missing: missingKinds(p) })).filter(p => {
+        if (state.gapKind === "ALL") return p.missing.length > 0;
+        return p.missing.indexOf(state.gapKind) >= 0;
+      }).sort((a, b) => b.missing.length - a.missing.length || a.pipeline.localeCompare(b.pipeline));
+      const focus = state.gapKind === "ALL" ? "any monitor" : KIND_META[state.gapKind].label.toLowerCase();
+      $("gaps-cap").textContent = list.length + " pipelines missing " + focus +
+        " · Start / end / duration here means the ADM monitor type, not run timestamps. Click a row for pipeline alerts.";
+      $("gaps-table").innerHTML = list.map(p =>
+        `<tr data-pipe="${esc(p.pipeline)}">
+          <td><button class="act pname" type="button">${esc(p.pipeline)}</button>
+            <div class="meta">${p.runs.length} runs in window</div></td>
+          <td>${esc(p.namespace)}</td>
+          <td>${esc(p.source)}<div class="meta">${esc(p.owner)}</div></td>
+          <td class="num">${p.policies} of ${KIND_ORDER.length}</td>
+          <td>${p.missing.map(k => `<span class="tag miss">${esc(KIND_META[k].label)}</span>`).join(" ") || `<span class="tag oktag">Fully monitored</span>`}</td>
+        </tr>`
+      ).join("") || `<tr><td colspan="5" class="hint">Every pipeline in scope has ${state.gapKind === "ALL" ? "its monitors" : "a " + KIND_META[state.gapKind].label.toLowerCase() + " monitor"} configured</td></tr>`;
+      $("gaps-table").querySelectorAll("tr[data-pipe]").forEach(tr => {
+        tr.onclick = () => openSheet(tr.getAttribute("data-pipe"));
+      });
+    }
     function renderTrace(rows, f) {
       const all = monitoredSet(rows, f);
       const selP = state.tracePipes.filter(p => all.some(x => x.pipeline === p));
       state.tracePipes = selP;
       const scoped = selP.length ? all.filter(p => selP.indexOf(p.pipeline) >= 0) : all;
       const pq = ($("trace-polq").value || "").trim().toLowerCase();
-      let slots = scoped.flatMap(p => p.slots);
+      let slots = scoped.flatMap(p => p.slots).filter(s => s.configured);
       if (pq) slots = slots.filter(s => (`${s.name} ${s.pipe} ${s.kind} ${s.thr}`).toLowerCase().includes(pq));
       const selPol = state.tracePols.filter(k => slots.some(s => s.key === k));
       state.tracePols = selPol;
       const visSlots = selPol.length ? slots.filter(s => selPol.indexOf(s.key) >= 0) : slots;
       const visAlerts = visSlots.flatMap(s => s.alerts);
       const tzLab = tzName(state.tz);
-      $("pol-start-th").textContent = "Start (" + tzLab + ")";
 
       $("trace-sum").innerHTML =
         `<div class="trace-stat"><span class="trace-num">1</span><div><p class="kicker">Monitored pipelines</p><b>${selP.length ? selP.length + " selected" : "All " + all.length + " in view"}</b></div></div>` +
-        `<div class="trace-stat"><span class="trace-num">2</span><div><p class="kicker">Policies</p><b>${selPol.length ? selPol.length + " selected" : visSlots.filter(s => s.configured).length + " configured · " + visSlots.length + " rows"}</b></div></div>` +
+        `<div class="trace-stat"><span class="trace-num">2</span><div><p class="kicker">Policies</p><b>${selPol.length ? selPol.length + " selected" : visSlots.length + " configured"}</b></div></div>` +
         `<div class="trace-stat"><span class="trace-num">3</span><div><p class="kicker">Alerts</p><b>${visAlerts.length} in the timeline below</b></div></div>`;
-      $("trace-note").textContent = "Pipeline name opens alerts in this dashboard. A run ID opens that execution in Acceldata. Failure is the pipeline run-failure alert (not a TIME monitoring policy). Start / end / duration rows are ADM policies when configured; otherwise they stay in the list as Not configured.";
+      $("trace-note").textContent = "This page lists only configured monitors. Unconfigured duration / start / end policies are on Overview → Unmonitored policies. Pipeline name opens alerts here; a run ID opens that execution in Acceldata.";
       $("trace-p-sub").textContent = (selP.length ? selP.length + " selected · " : "Select one or more rows to trace their policies. ") + all.length + " pipelines in scope.";
       $("trace-pol-sub").textContent = (selP.length ? selP.join(", ") : "All pipelines in view") + " — select a policy to scope the timeline.";
       $("trace-by-asset").classList.toggle("on", state.traceByAsset);
@@ -1720,16 +1785,17 @@
       const renderSlotRow = (s, hidePipe) => {
         const on = selPol.indexOf(s.key) >= 0;
         const sc = sevCounts(s.alerts);
-        const dur = s.duration == null ? "—" : fmt(s.duration) + " min";
         const rid = uniqueAlertRunId(s.alerts) || latestAlertRunId(s.alerts) || (s.last && s.last.id) || "";
-        const runBtn = rid ? ` · ${runLinkHtml(s.pipe, rid)}` : "";
-        return `<tr class="${on ? "sel" : ""} ${s.configured ? "" : "notcfg"}" data-pkey="${esc(s.key)}">
+        const metaBits = [];
+        if (!hidePipe) metaBits.push(esc(s.pipe));
+        if (rid) metaBits.push(runLinkHtml(s.pipe, rid));
+        return `<tr class="${on ? "sel" : ""}" data-pkey="${esc(s.key)}">
           <td class="chk"><input type="checkbox" ${on ? "checked" : ""} data-pkey="${esc(s.key)}" /></td>
           <td><div class="pname">${esc(s.name)}</div>
-            <div class="meta">${hidePipe ? "" : esc(s.pipe) + " · "}${esc(KIND_META[s.kind].label)} · ${esc(s.thr)}${runBtn}</div></td>
-          <td>${esc(s.start)}</td>
-          <td>${esc(s.end)}</td>
-          <td class="num">${dur}</td>
+            <div class="meta">${metaBits.join(" · ")}</div></td>
+          <td>${esc(KIND_META[s.kind].label)}</td>
+          <td>${esc(s.thr)}</td>
+          <td>${s.sev ? `<span class="badge ${s.sev}">${s.sev}</span>` : "—"}</td>
           <td class="num">${s.failed ? `<span class="fail">${s.failed}</span>` : "0"}</td>
           <td class="num">${s.alerts.length}</td>
           <td>${profileHtml(sc)}</td>
@@ -1754,8 +1820,8 @@
       rows.forEach(r => daySet.add(r.localDay));
       visAlerts.forEach(a => { if (a.day) daySet.add(a.day); });
       [...daySet].sort().forEach(d => days.push(d));
-      const configuredVis = visSlots.filter(s => s.configured || s.alerts.length);
-      const rankedHeat = configuredVis.slice().sort((a, b) => b.alerts.length - a.alerts.length);
+      const configuredVis = visSlots.slice().sort((a, b) => b.alerts.length - a.alerts.length);
+      const rankedHeat = configuredVis;
       const limit = state.traceLimit === "all" ? rankedHeat.length : Number(state.traceLimit) || 16;
       const heatRows = rankedHeat.slice(0, limit);
       $("trace-hm-sub").textContent = (selPol.length || selP.length ? "Scoped selection" : "All policies in view") +
@@ -1943,6 +2009,7 @@
           glanceCard("g2", "By pipeline", recCount, "Pipelines with 2+ overruns in the window", "pipeline", [["pipeline","Pipeline"],["owner","Owner"]], ctx("pipeline"), hl.pipeline) +
           glanceCard("g3", "By status", long.filter(r => r.result === "FAILURE").length, "Overruns that also failed", state.splits.c === "severity" ? "status" : state.splits.c, [["status","Status"],["pipeline","Pipeline"]], ctx("status"), hl.status);
       }
+      renderGaps(rows, f);
 
       $("glance").querySelectorAll("select[data-split]").forEach(sel => {
         sel.onchange = () => {
@@ -2239,6 +2306,9 @@
     $("table-groups").querySelectorAll("button").forEach(b => {
       b.onclick = () => { state.tableGroup = b.getAttribute("data-tg"); render(); };
     });
+    $("gaps-kinds").querySelectorAll("button").forEach(b => {
+      b.onclick = () => { state.gapKind = b.getAttribute("data-gap"); render(); };
+    });
     ["f-long","f-sla","f-out"].forEach(id => {
       $(id).addEventListener("change", render);
     });
@@ -2275,8 +2345,8 @@
       const list = monitoredSet(rows, f);
       const scoped = state.tracePipes.length ? list.filter(p => state.tracePipes.indexOf(p.pipeline) >= 0) : list;
       downloadCsv("pipeline-policies.csv",
-        ["pipeline","policy","type","configured","threshold","start","end","duration_min","failed","alerts"],
-        scoped.flatMap(p => p.slots.map(s => [s.pipe, s.name, KIND_META[s.kind].label, s.configured, s.thr, s.start, s.end, s.duration == null ? "" : s.duration, s.failed, s.alerts.length])));
+        ["pipeline","policy","type","severity","threshold","failed","alerts"],
+        scoped.flatMap(p => p.slots.filter(s => s.configured).map(s => [s.pipe, s.name, KIND_META[s.kind].label, s.sev, s.thr, s.failed, s.alerts.length])));
     };
     $("btn-reset").onclick = () => {
       resetFilters(state.view === "long");
