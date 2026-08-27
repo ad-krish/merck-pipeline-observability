@@ -177,14 +177,22 @@
     .filtering { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 14px; }
     .filtering .lab { font-size: 11px; letter-spacing: .08em; font-weight: 700; color: var(--muted); }
     .chip .k { color: var(--muted); font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
-    .trace-sum { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; margin: 0 0 12px; }
-    .trace-stat { display: flex; align-items: center; gap: 10px; }
+    .trace-sum { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; margin: 0 0 12px; }
+    .trace-stat {
+      display: flex; align-items: center; gap: 10px; text-align: left;
+      border: 1px solid var(--line); background: #fff; border-radius: 10px;
+      padding: 8px 12px; min-width: 180px;
+    }
+    .trace-stat.pick { cursor: pointer; }
+    .trace-stat.pick:hover { border-color: #c5d6d2; }
+    .trace-stat.on { border-color: var(--teal); background: #f3f8f7; }
     .trace-num {
       width: 28px; height: 28px; border-radius: 50%; background: var(--teal); color: #fff;
-      display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px;
+      display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex: 0 0 auto;
     }
     .trace-stat .kicker { margin: 0; }
     .trace-stat b { display: block; font-size: 14px; }
+    .trace-stat .toggles { margin-top: 6px; }
     .trace-top { display: grid; grid-template-columns: 1.15fr 1fr; gap: 12px; }
     .trace-hd { padding: 10px 12px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
     .trace-hd b { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
@@ -1751,7 +1759,8 @@
       return (sevCounts(p.alerts)[state.traceAlert] || 0) > 0;
     }
     function renderTrace(rows, f) {
-      const all = monitoredSet(rows, f).filter(pipeMatchesAlertFilter);
+      const full = monitoredSet(rows, f);
+      const all = full.filter(pipeMatchesAlertFilter);
       const selP = state.tracePipes.filter(p => all.some(x => x.pipeline === p));
       state.tracePipes = selP;
       const scoped = selP.length ? all.filter(p => selP.indexOf(p.pipeline) >= 0) : all;
@@ -1763,11 +1772,38 @@
       const visSlots = selPol.length ? slots.filter(s => selPol.indexOf(s.key) >= 0) : slots;
       const visAlerts = visSlots.flatMap(s => s.alerts);
       const tzLab = tzName(state.tz);
+      const fullSev = sevCounts(full.flatMap(p => p.alerts));
+      const nAlertPipes = full.filter(p => p.alerts.length > 0).length;
+      const pipeLabel = selP.length
+        ? selP.length + " selected of " + all.length
+        : (state.traceAlert === "ALL" ? full.length + " in view" : all.length + " of " + full.length + " shown");
 
       $("trace-sum").innerHTML =
-        `<div class="trace-stat"><span class="trace-num">1</span><div><p class="kicker">Monitored pipelines</p><b>${selP.length ? selP.length + " selected" : "All " + all.length + " in view"}</b></div></div>` +
-        `<div class="trace-stat"><span class="trace-num">2</span><div><p class="kicker">Policies</p><b>${selPol.length ? selPol.length + " selected" : visSlots.length + " configured"}</b></div></div>` +
-        `<div class="trace-stat"><span class="trace-num">3</span><div><p class="kicker">Alerts</p><b>${visAlerts.length} in the timeline below</b></div></div>`;
+        `<div class="trace-stat pick${state.traceAlert==="ALL"?" on":""}" data-ta="ALL"><span class="trace-num">1</span><div>
+          <p class="kicker">Monitored pipelines</p><b>${pipeLabel}</b>
+        </div></div>` +
+        `<div class="trace-stat"><span class="trace-num">2</span><div>
+          <p class="kicker">Policies</p><b>${selPol.length ? selPol.length + " selected" : visSlots.length + " configured"}</b>
+        </div></div>` +
+        `<div class="trace-stat pick${state.traceAlert!=="ALL"?" on":""}" data-ta="ANY"><span class="trace-num">3</span><div>
+          <p class="kicker">Alerts</p>
+          <b>${nAlertPipes} pipelines with alerts · ${full.flatMap(p => p.alerts).length} alerts</b>
+          <div class="toggles">
+            <button type="button" data-ta="ANY"${state.traceAlert==="ANY"?" class=\"on\"":""}>With alerts</button>
+            <button type="button" data-ta="CRITICAL"${state.traceAlert==="CRITICAL"?" class=\"on\"":""}>Critical ${fullSev.CRITICAL || 0}</button>
+            <button type="button" data-ta="HIGH"${state.traceAlert==="HIGH"?" class=\"on\"":""}>High ${fullSev.HIGH || 0}</button>
+            <button type="button" data-ta="MEDIUM"${state.traceAlert==="MEDIUM"?" class=\"on\"":""}>Medium ${fullSev.MEDIUM || 0}</button>
+            <button type="button" data-ta="LOW"${state.traceAlert==="LOW"?" class=\"on\"":""}>Low ${fullSev.LOW || 0}</button>
+          </div>
+        </div></div>`;
+      $("trace-sum").querySelectorAll("[data-ta]").forEach(el => {
+        el.onclick = e => {
+          e.stopPropagation();
+          const next = el.getAttribute("data-ta");
+          state.traceAlert = state.traceAlert === next && next !== "ALL" ? "ALL" : next;
+          render();
+        };
+      });
       $("trace-note").textContent = "This page lists only configured monitors. Unconfigured duration / start / end policies are on Overview → Unmonitored policies. Pipeline name opens alerts here; a run ID opens that execution in Acceldata.";
       const alertLab = state.traceAlert === "ALL" ? "" : state.traceAlert === "ANY" ? "with alerts · " : state.traceAlert.toLowerCase() + " alerts · ";
       $("trace-p-sub").textContent = (selP.length ? selP.length + " selected · " : "Select one or more rows to trace their policies. ") + alertLab + all.length + " pipelines in scope.";
