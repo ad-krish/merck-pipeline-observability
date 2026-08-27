@@ -177,11 +177,11 @@
     .filtering { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 14px; }
     .filtering .lab { font-size: 11px; letter-spacing: .08em; font-weight: 700; color: var(--muted); }
     .chip .k { color: var(--muted); font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
-    .trace-sum { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; margin: 0 0 12px; }
+    .trace-sum { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 12px; }
     .trace-stat {
       display: flex; align-items: center; gap: 10px; text-align: left;
       border: 1px solid var(--line); background: #fff; border-radius: 10px;
-      padding: 8px 12px; min-width: 180px;
+      padding: 8px 12px; min-width: 180px; flex: 1 1 200px;
     }
     .trace-stat.pick { cursor: pointer; }
     .trace-stat.pick:hover { border-color: #c5d6d2; }
@@ -193,6 +193,14 @@
     .trace-stat .kicker { margin: 0; }
     .trace-stat b { display: block; font-size: 14px; }
     .trace-stat .toggles { margin-top: 6px; }
+    .trace-arrow {
+      flex: 0 0 auto; color: var(--teal); display: flex; align-items: center;
+      opacity: .85;
+    }
+    .trace-arrow svg { display: block; }
+    @media (max-width: 900px) {
+      .trace-arrow { transform: rotate(90deg); width: 100%; justify-content: center; }
+    }
     .trace-top { display: grid; grid-template-columns: 1.15fr 1fr; gap: 12px; }
     .trace-hd { padding: 10px 12px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
     .trace-hd b { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
@@ -1778,13 +1786,14 @@
         ? selP.length + " selected of " + all.length
         : (state.traceAlert === "ALL" ? full.length + " in view" : all.length + " of " + full.length + " shown");
 
+      const flowArrow = `<span class="trace-arrow" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 12h13M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`;
       $("trace-sum").innerHTML =
         `<div class="trace-stat pick${state.traceAlert==="ALL"?" on":""}" data-ta="ALL"><span class="trace-num">1</span><div>
           <p class="kicker">Monitored pipelines</p><b>${pipeLabel}</b>
-        </div></div>` +
+        </div></div>` + flowArrow +
         `<div class="trace-stat"><span class="trace-num">2</span><div>
           <p class="kicker">Policies</p><b>${selPol.length ? selPol.length + " selected" : visSlots.length + " configured"}</b>
-        </div></div>` +
+        </div></div>` + flowArrow +
         `<div class="trace-stat pick${state.traceAlert!=="ALL"?" on":""}" data-ta="ANY"><span class="trace-num">3</span><div>
           <p class="kicker">Alerts</p>
           <b>${nAlertPipes} pipelines with alerts · ${full.flatMap(p => p.alerts).length} alerts</b>
