@@ -226,7 +226,7 @@
     .runrow:hover, .alrow:hover { background: #f3f7f6; }
     .runrow.sel, .alrow.sel { background: #e7f0ee; }
     .badge { display: inline-block; border-radius: 4px; padding: 1px 6px; font-size: 10px; letter-spacing: .04em; font-weight: 700; }
-    .badge.MEDIUM { background: #f6e7b8; color: #7a5b10; }
+    .badge.LOW { background: #e8edf0; color: #44515c; }
     .badge.HIGH { background: #f3d0b8; color: #8a3b12; }
     .badge.CRITICAL { background: #f4c7c4; color: #8a1f18; }
     .badge.OPEN { background: #f4c7c4; color: #8a1f18; }
@@ -566,7 +566,13 @@
                 <span class="step">1</span><b>Monitored pipelines</b>
                 <div class="meta" id="trace-p-sub">Select one or more rows to trace their policies.</div>
               </div>
-              <div class="toggles">
+              <div class="toggles" id="trace-p-tools">
+                <button type="button" data-ta="ALL" class="on">All</button>
+                <button type="button" data-ta="ANY">With alerts</button>
+                <button type="button" data-ta="CRITICAL">Critical</button>
+                <button type="button" data-ta="HIGH">High</button>
+                <button type="button" data-ta="MEDIUM">Medium</button>
+                <button type="button" data-ta="LOW">Low</button>
                 <input id="trace-pq" type="search" placeholder="Find pipeline" />
                 <button type="button" class="ghost" id="trace-p-csv">CSV</button>
               </div>
@@ -824,7 +830,7 @@
       msValues: { source: [], status: [], sev: [], owner: [], pipe: [], ns: [], tag: [] },
       msLabels: { source: {}, status: {}, sev: {}, owner: {}, pipe: {}, ns: {}, tag: {} },
       thr: 10,
-      tracePipes: [], tracePols: [], traceByAsset: true, traceLimit: 16
+      tracePipes: [], tracePols: [], traceByAsset: true, traceLimit: 16, traceAlert: "ALL"
     };
     let TZONES = [];
     const MS_KEYS = ["source","status","sev","owner","pipe","ns","tag"];
@@ -1180,6 +1186,7 @@
       state.sheetOpen = false;
       state.tracePipes = [];
       state.tracePols = [];
+      state.traceAlert = "ALL";
       state.gapKind = "ALL";
       syncCustom();
       syncThr();
@@ -1738,8 +1745,13 @@
         tr.onclick = () => openSheet(tr.getAttribute("data-pipe"));
       });
     }
+    function pipeMatchesAlertFilter(p) {
+      if (state.traceAlert === "ALL") return true;
+      if (state.traceAlert === "ANY") return p.alerts.length > 0;
+      return (sevCounts(p.alerts)[state.traceAlert] || 0) > 0;
+    }
     function renderTrace(rows, f) {
-      const all = monitoredSet(rows, f);
+      const all = monitoredSet(rows, f).filter(pipeMatchesAlertFilter);
       const selP = state.tracePipes.filter(p => all.some(x => x.pipeline === p));
       state.tracePipes = selP;
       const scoped = selP.length ? all.filter(p => selP.indexOf(p.pipeline) >= 0) : all;
@@ -1757,12 +1769,16 @@
         `<div class="trace-stat"><span class="trace-num">2</span><div><p class="kicker">Policies</p><b>${selPol.length ? selPol.length + " selected" : visSlots.length + " configured"}</b></div></div>` +
         `<div class="trace-stat"><span class="trace-num">3</span><div><p class="kicker">Alerts</p><b>${visAlerts.length} in the timeline below</b></div></div>`;
       $("trace-note").textContent = "This page lists only configured monitors. Unconfigured duration / start / end policies are on Overview → Unmonitored policies. Pipeline name opens alerts here; a run ID opens that execution in Acceldata.";
-      $("trace-p-sub").textContent = (selP.length ? selP.length + " selected · " : "Select one or more rows to trace their policies. ") + all.length + " pipelines in scope.";
+      const alertLab = state.traceAlert === "ALL" ? "" : state.traceAlert === "ANY" ? "with alerts · " : state.traceAlert.toLowerCase() + " alerts · ";
+      $("trace-p-sub").textContent = (selP.length ? selP.length + " selected · " : "Select one or more rows to trace their policies. ") + alertLab + all.length + " pipelines in scope.";
       $("trace-pol-sub").textContent = (selP.length ? selP.join(", ") : "All pipelines in view") + " — select a policy to scope the timeline.";
       $("trace-by-asset").classList.toggle("on", state.traceByAsset);
       $("trace-rank").classList.toggle("on", !state.traceByAsset);
       [...$("trace-hlim").querySelectorAll("button")].forEach(b => {
         b.classList.toggle("on", String(state.traceLimit) === b.getAttribute("data-hlim"));
+      });
+      $("trace-p-tools").querySelectorAll("button[data-ta]").forEach(b => {
+        b.classList.toggle("on", b.getAttribute("data-ta") === state.traceAlert);
       });
 
       $("trace-pipes").innerHTML = all.map(p => {
@@ -2331,10 +2347,13 @@
     $("trace-hlim").querySelectorAll("button").forEach(b => {
       b.onclick = () => { state.traceLimit = b.getAttribute("data-hlim"); render(); };
     });
+    $("trace-p-tools").querySelectorAll("button[data-ta]").forEach(b => {
+      b.onclick = () => { state.traceAlert = b.getAttribute("data-ta"); render(); };
+    });
     $("trace-p-csv").onclick = () => {
       const f = filters();
       const rows = applyScope(f);
-      const list = monitoredSet(rows, f);
+      const list = monitoredSet(rows, f).filter(pipeMatchesAlertFilter);
       downloadCsv("monitored-pipelines.csv",
         ["pipeline","namespace","source","owner","policies","runs","failed","alerts"],
         list.map(p => [p.pipeline, p.namespace, p.source, p.owner, p.policies, p.runs.length, p.failed, p.alerts.length]));
@@ -2342,7 +2361,7 @@
     $("trace-pol-csv").onclick = () => {
       const f = filters();
       const rows = applyScope(f);
-      const list = monitoredSet(rows, f);
+      const list = monitoredSet(rows, f).filter(pipeMatchesAlertFilter);
       const scoped = state.tracePipes.length ? list.filter(p => state.tracePipes.indexOf(p.pipeline) >= 0) : list;
       downloadCsv("pipeline-policies.csv",
         ["pipeline","policy","type","severity","threshold","failed","alerts"],
