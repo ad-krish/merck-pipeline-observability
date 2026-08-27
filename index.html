@@ -824,6 +824,7 @@
       };
     });
     const SOURCE_LABEL = { AIRFLOW: "Airflow / OpenLineage", SPARK: "Spark", DBT: "dbt" };
+    const SOURCE_SHORT = { AIRFLOW: "Airflow", SPARK: "Spark", DBT: "dbt" };
     const STATUS_LABEL = { SUCCESS: "Success", FAILURE: "Failed" };
     const SEV_LABEL = { CRITICAL: "Critical", HIGH: "High", MEDIUM: "Medium", "No alerts": "No alerts" };
     const ESTATE_TAGS = ["acr", "demo_inthecall", "hsbc", "rsa-demo", "rzr", "sc_9418"];
@@ -846,7 +847,8 @@
       msValues: { source: [], status: [], sev: [], owner: [], pipe: [], ns: [], tag: [] },
       msLabels: { source: {}, status: {}, sev: {}, owner: {}, pipe: {}, ns: {}, tag: {} },
       thr: 10,
-      tracePipes: [], tracePols: [], traceByAsset: true, traceLimit: 16, traceAlert: "ALL"
+      tracePipes: [], tracePols: [], traceByAsset: true, traceLimit: 16,
+      traceAlert: "ALL", traceSource: "ALL", traceKind: "ALL"
     };
     let TZONES = [];
     const MS_KEYS = ["source","status","sev","owner","pipe","ns","tag"];
@@ -1203,6 +1205,8 @@
       state.tracePipes = [];
       state.tracePols = [];
       state.traceAlert = "ALL";
+      state.traceSource = "ALL";
+      state.traceKind = "ALL";
       state.gapKind = "ALL";
       syncCustom();
       syncThr();
@@ -1768,12 +1772,16 @@
     }
     function renderTrace(rows, f) {
       const full = monitoredSet(rows, f);
-      const all = full.filter(pipeMatchesAlertFilter);
+      const all = full.filter(p => {
+        if (state.traceSource !== "ALL" && p.source !== state.traceSource) return false;
+        return pipeMatchesAlertFilter(p);
+      });
       const selP = state.tracePipes.filter(p => all.some(x => x.pipeline === p));
       state.tracePipes = selP;
       const scoped = selP.length ? all.filter(p => selP.indexOf(p.pipeline) >= 0) : all;
       const pq = ($("trace-polq").value || "").trim().toLowerCase();
       let slots = scoped.flatMap(p => p.slots).filter(s => s.configured);
+      if (state.traceKind !== "ALL") slots = slots.filter(s => s.kind === state.traceKind);
       if (pq) slots = slots.filter(s => (`${s.name} ${s.pipe} ${s.kind} ${s.thr}`).toLowerCase().includes(pq));
       const selPol = state.tracePols.filter(k => slots.some(s => s.key === k));
       state.tracePols = selPol;
@@ -1782,34 +1790,54 @@
       const tzLab = tzName(state.tz);
       const fullSev = sevCounts(full.flatMap(p => p.alerts));
       const nAlertPipes = full.filter(p => p.alerts.length > 0).length;
+      const srcCounts = {};
+      full.forEach(p => { srcCounts[p.source] = (srcCounts[p.source] || 0) + 1; });
+      const kindCounts = {};
+      full.flatMap(p => p.slots).filter(s => s.configured).forEach(s => {
+        kindCounts[s.kind] = (kindCounts[s.kind] || 0) + 1;
+      });
+      const fullPolN = Object.values(kindCounts).reduce((a, n) => a + n, 0);
       const pipeLabel = selP.length
         ? selP.length + " selected of " + all.length
-        : (state.traceAlert === "ALL" ? full.length + " in view" : all.length + " of " + full.length + " shown");
+        : (state.traceSource === "ALL" && state.traceAlert === "ALL" ? full.length + " in view" : all.length + " of " + full.length + " shown");
+      const polLabel = selPol.length
+        ? selPol.length + " selected"
+        : (state.traceKind === "ALL" ? visSlots.length + " configured" : visSlots.length + " of " + fullPolN + " shown");
+      const srcPills = ["AIRFLOW","SPARK","DBT"].filter(s => srcCounts[s]).map(s =>
+        `<button type="button" data-tf="src" data-tv="${s}"${state.traceSource===s?" class=\"on\"":""}>${esc(SOURCE_SHORT[s] || s)} ${srcCounts[s]}</button>`
+      ).join("");
+      const kindPills = KIND_ORDER.filter(k => kindCounts[k]).map(k =>
+        `<button type="button" data-tf="kind" data-tv="${k}"${state.traceKind===k?" class=\"on\"":""}>${esc(KIND_META[k].label)} ${kindCounts[k]}</button>`
+      ).join("");
 
       const flowArrow = `<span class="trace-arrow" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 12h13M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`;
       $("trace-sum").innerHTML =
-        `<div class="trace-stat pick${state.traceAlert==="ALL"?" on":""}" data-ta="ALL"><span class="trace-num">1</span><div>
+        `<div class="trace-stat pick${state.traceSource!=="ALL"?" on":""}" data-tf="src" data-tv="ALL"><span class="trace-num">1</span><div>
           <p class="kicker">Monitored pipelines</p><b>${pipeLabel}</b>
+          <div class="toggles">${srcPills}</div>
         </div></div>` + flowArrow +
-        `<div class="trace-stat"><span class="trace-num">2</span><div>
-          <p class="kicker">Policies</p><b>${selPol.length ? selPol.length + " selected" : visSlots.length + " configured"}</b>
+        `<div class="trace-stat pick${state.traceKind!=="ALL"?" on":""}" data-tf="kind" data-tv="ALL"><span class="trace-num">2</span><div>
+          <p class="kicker">Policies</p><b>${polLabel}</b>
+          <div class="toggles">${kindPills}</div>
         </div></div>` + flowArrow +
-        `<div class="trace-stat pick${state.traceAlert!=="ALL"?" on":""}" data-ta="ANY"><span class="trace-num">3</span><div>
+        `<div class="trace-stat pick${state.traceAlert!=="ALL"?" on":""}" data-tf="alert" data-tv="ANY"><span class="trace-num">3</span><div>
           <p class="kicker">Alerts</p>
           <b>${nAlertPipes} pipelines with alerts · ${full.flatMap(p => p.alerts).length} alerts</b>
           <div class="toggles">
-            <button type="button" data-ta="ANY"${state.traceAlert==="ANY"?" class=\"on\"":""}>With alerts</button>
-            <button type="button" data-ta="CRITICAL"${state.traceAlert==="CRITICAL"?" class=\"on\"":""}>Critical ${fullSev.CRITICAL || 0}</button>
-            <button type="button" data-ta="HIGH"${state.traceAlert==="HIGH"?" class=\"on\"":""}>High ${fullSev.HIGH || 0}</button>
-            <button type="button" data-ta="MEDIUM"${state.traceAlert==="MEDIUM"?" class=\"on\"":""}>Medium ${fullSev.MEDIUM || 0}</button>
-            <button type="button" data-ta="LOW"${state.traceAlert==="LOW"?" class=\"on\"":""}>Low ${fullSev.LOW || 0}</button>
+            <button type="button" data-tf="alert" data-tv="ANY"${state.traceAlert==="ANY"?" class=\"on\"":""}>With alerts</button>
+            <button type="button" data-tf="alert" data-tv="CRITICAL"${state.traceAlert==="CRITICAL"?" class=\"on\"":""}>Critical ${fullSev.CRITICAL || 0}</button>
+            <button type="button" data-tf="alert" data-tv="HIGH"${state.traceAlert==="HIGH"?" class=\"on\"":""}>High ${fullSev.HIGH || 0}</button>
+            <button type="button" data-tf="alert" data-tv="MEDIUM"${state.traceAlert==="MEDIUM"?" class=\"on\"":""}>Medium ${fullSev.MEDIUM || 0}</button>
+            <button type="button" data-tf="alert" data-tv="LOW"${state.traceAlert==="LOW"?" class=\"on\"":""}>Low ${fullSev.LOW || 0}</button>
           </div>
         </div></div>`;
-      $("trace-sum").querySelectorAll("[data-ta]").forEach(el => {
+      $("trace-sum").querySelectorAll("[data-tf]").forEach(el => {
         el.onclick = e => {
           e.stopPropagation();
-          const next = el.getAttribute("data-ta");
-          state.traceAlert = state.traceAlert === next && next !== "ALL" ? "ALL" : next;
+          const field = el.getAttribute("data-tf");
+          const val = el.getAttribute("data-tv");
+          const key = field === "src" ? "traceSource" : field === "kind" ? "traceKind" : "traceAlert";
+          state[key] = (val === "ALL" || state[key] === val) ? "ALL" : val;
           render();
         };
       });
